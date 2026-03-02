@@ -1,39 +1,65 @@
-body, .dropdown *, .input {
-    background: #343E59;
-    color: #fff;
+/* ============================================================
+   dark-theme.css — loaded by default, disabled in light mode
+   ApexCharts dark overrides — colours reference CSS variables
+   ============================================================ */
+
+/* ── Tooltip ─────────────────────────────────────────────── */
+.apexcharts-tooltip.apexcharts-theme-dark {
+  background: #1a1a1a !important;
+  border: 1px solid var(--accent-bdr) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,.85) !important;
 }
-a {
-    color: #fff;
+.apexcharts-tooltip-title {
+  background: #222222 !important;
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 700 !important;
+  color: var(--accent-b) !important;
+  border-bottom: 1px solid var(--accent-bdr) !important;
+  padding: 7px 12px !important;
 }
-a:hover {
-    color: #f9826c;
+.apexcharts-tooltip-text {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 12px !important;
+  color: #f0ece4 !important;
+  padding: 7px 12px !important;
 }
-.box {
-    background-color: #2B2D3E;
+
+/* ── Axis tooltips ───────────────────────────────────────── */
+.apexcharts-xaxistooltip,
+.apexcharts-yaxistooltip {
+  background: #1a1a1a !important;
+  border: 1px solid var(--accent-bdr) !important;
+  border-radius: 5px !important;
+  color: #f0ece4 !important;
 }
-.tabs a {
-    border-bottom-color: #dbdbdb;
-    color: #fff;
-    border-bottom-style: none;
+.apexcharts-xaxistooltip-bottom::before,
+.apexcharts-xaxistooltip-bottom::after {
+  border-bottom-color: var(--accent-bdr) !important;
 }
-.tabs li.is-active a {
-    border-bottom-color: #f9826c;
-    color: #fff;
-    border-bottom-style: solid;
+
+/* ── Annotation labels ───────────────────────────────────── */
+.apexcharts-xaxis-annotation-label {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
 }
-.tabs a:hover {
-    border-bottom-color: #dbdbdb;
-    color: #dbdbdb;
-    border-bottom-style: solid;
+
+/* ── Menu ────────────────────────────────────────────────── */
+.apexcharts-menu {
+  background: #1a1a1a !important;
+  border: 1px solid var(--accent-bdr) !important;
+  border-radius: 10px !important;
 }
-.tabs ul{
-    margin-bottom: 5px;
-    border-bottom-style: none;
+.apexcharts-menu-item:hover {
+  background: var(--accent-dim) !important;
+  color: var(--accent-b) !important;
 }
-.checkbox:hover{
-    color: #f9826c;
-}
-#log-content {
-    color: #fff;
-    background-color: #2B2D3E;
+
+/* ── Grid lines ──────────────────────────────────────────── */
+.apexcharts-gridline { stroke: rgba(255,255,255,0.04) !important; }
+
+/* ── Focus ring (dark mode) ──────────────────────────────── */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #0a0a0a, 0 0 0 4px var(--accent);
 }

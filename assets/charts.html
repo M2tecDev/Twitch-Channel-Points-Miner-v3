@@ -1,209 +1,415 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="en" data-theme="gold" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Twitch-Channel-Points-Miner-v2</title>
-    <link rel="icon" type="image/png" sizes="32x32"
-        href="https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png">
-    <link rel="icon" type="image/png" sizes="16x16"
-        href="https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>Twitch Channel Points Miner v2</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.42.0"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css" rel="stylesheet" />
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.6.1/css/bulma.css" rel="stylesheet" />
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet"
-        integrity="sha512-1ycn6IcaQQ40/MKBW2W4Rhis/DbILU74C1vSrLJxCq57o941Ym01SwNsOMqvEBFlcgUa6xLiPY/NS5R+E6ztJQ=="
-        crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="icon" type="image/png" sizes="32x32" href="https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png">
 
-    <link href="{{url_for('static', filename='dark-theme.css')}}" rel="stylesheet" />
-    <link href="{{url_for('static', filename='style.css')}}" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.42.0"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+  <link href="{{ url_for('static', filename='dark-theme.css') }}" rel="stylesheet" id="dark-theme-link">
+  <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
+<body>
 
-<body style="height: 100vh;">
-    <div class="container has-text-centered" style="height: 100vh;">
-        <div class="columns" id="header">
-            <div class="column has-text-right">
-                <a href="https://github.com/rdavydov/Twitch-Channel-Points-Miner-v2" target="_blank"><img
-                        style="margin-top: -20px;" width="600px" src="{{url_for('static', filename='banner.png')}}"
-                        alt="banner"></a>
-            </div>
-            <div class="column is-4 has-text-left" style="margin-top: 35px;">
-                <table>
-                    <tr>
-                        <td><a href="https://github.com/Tkd-Alex" target="_blank">Tkd-Alex</a></td>
-                        <td><a href="https://github.com/rdavydov" target="_blank">rdavydov</a></td>
-                    </tr>
-                    <tr>
-                        <td><a href="https://github.com/Tkd-Alex/Twitch-Channel-Points-Miner-v2/blob/master/LICENSE">
-                                <img alt="License"
-                                    src="https://img.shields.io/github/license/Tkd-Alex/Twitch-Channel-Points-Miner-v2" /></a>
-                        </td>
-                        <td><a href="https://github.com/rdavydov/Twitch-Channel-Points-Miner-v2/blob/master/LICENSE">
-                                <img alt="License"
-                                    src="https://img.shields.io/github/license/rdavydov/Twitch-Channel-Points-Miner-v2" /></a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><a href="https://www.python.org/downloads/release/python-360/">
-                                <img alt="Python3"
-                                    src="https://img.shields.io/badge/built%20for-Python≥3.6-red.svg?style=flat"></a>
-                        </td>
-                        <td><a href="https://www.python.org/downloads/release/python-360/">
-                                <img alt="Python3"
-                                    src="https://img.shields.io/badge/built%20for-Python≥3.6-red.svg?style=flat"></a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><a href="https://github.com/Tkd-Alex/Twitch-Channel-Points-Miner-v2/pulls">
-                                <img alt="PRsWelcome"
-                                    src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat" /></a>
-                        </td>
-                        <td><a href="https://github.com/rdavydov/Twitch-Channel-Points-Miner-v2/pulls">
-                                <img alt="PRsWelcome"
-                                    src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat" /></a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><a href="https://github.com/Tkd-Alex/Twitch-Channel-Points-Miner-v2/stargazers">
-                                <img alt="GitHub Repo stars"
-                                    src="https://img.shields.io/github/stars/Tkd-Alex/Twitch-Channel-Points-Miner-v2" /></a>
-                        </td>
-                        <td><a href="https://github.com/rdavydov/Twitch-Channel-Points-Miner-v2/stargazers">
-                                <img alt="GitHub Repo stars"
-                                    src="https://img.shields.io/github/stars/rdavydov/Twitch-Channel-Points-Miner-v2" /></a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><a
-                                href="https://github.com/Tkd-Alex/Twitch-Channel-Points-Miner-v2/issues?q=is%3Aissue+is%3Aclosed">
-                                <img alt="GitHub closed issues"
-                                    src="https://img.shields.io/github/issues-closed/Tkd-Alex/Twitch-Channel-Points-Miner-v2"></a>
-                        </td>
-                        <td><a
-                                href="https://github.com/rdavydov/Twitch-Channel-Points-Miner-v2/issues?q=is%3Aissue+is%3Aclosed">
-                                <img alt="GitHub closed issues"
-                                    src="https://img.shields.io/github/issues-closed/rdavydov/Twitch-Channel-Points-Miner-v2"></a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><a href="https://github.com/Tkd-Alex/Twitch-Channel-Points-Miner-v2">
-                                <img alt="GitHub last commit"
-                                    src="https://img.shields.io/github/last-commit/Tkd-Alex/Twitch-Channel-Points-Miner-v2" /></a>
-                        </td>
-                        <td><a href="https://github.com/rdavydov/Twitch-Channel-Points-Miner-v2">
-                                <img alt="GitHub last commit"
-                                    src="https://img.shields.io/github/last-commit/rdavydov/Twitch-Channel-Points-Miner-v2" /></a>
-                        </td>
-                    </tr>
-                </table>
-            </div>
-        </div>
+<div id="status-announcer" aria-live="polite" aria-atomic="true" class="sr-only"></div>
 
-        <div class="columns">
-            <div class="column is-narrow has-text-center">
-                <div class="dropdown">
-                    <div class="dropdown-trigger">
-                        <button class="button" aria-haspopup="true" aria-controls="dropdown-menu">
-                            <span id="sorting-by"></span>
-                            <span class="icon is-small">
-                                <i class="fas fa-angle-down" aria-hidden="true"></i>
-                            </span>
-                        </button>
-                    </div>
-                    <div class="dropdown-menu" id="dropdown-menu" role="menu">
-                        <div class="dropdown-content">
-                            <a href="#" class="dropdown-item" onClick="changeSortBy(this)">
-                                Name ascending
-                            </a>
-                            <a href="#" class="dropdown-item" onClick="changeSortBy(this)">
-                                Name descending
-                            </a>
-                            <a href="#" class="dropdown-item" onClick="changeSortBy(this)">
-                                Points ascending
-                            </a>
-                            <a href="#" class="dropdown-item" onClick="changeSortBy(this)">
-                                Points descending
-                            </a>
-                            <a href="#" class="dropdown-item" onClick="changeSortBy(this)">
-                                Last activity ascending
-                            </a>
-                            <a href="#" class="dropdown-item" onClick="changeSortBy(this)">
-                                Last activity descending
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="column is-2 has-text-left">
-                <input class="input" type="date" id="startDate">
-            </div>
-            <div class="column is-2 has-text-left">
-                <input class="input" type="date" id="endDate">
-            </div>
-            <div class="column has-text-right" style="margin: auto">
-                <button id="auto-update-log">⏸️</button>
-                <label class="checkbox checkbox-label">
-                    Log
-                    <input type="checkbox" id="log">
-                </label>
-                <label class="checkbox checkbox-label">
-                    Annotations
-                    <input type="checkbox" checked="true" id="annotations">
-                </label>
-                <label class="checkbox checkbox-label">
-                    Dark mode
-                    <input type="checkbox" checked="true" id="dark-mode">
-                </label>
-                <label class="checkbox checkbox-label">
-                    Header
-                    <input type="checkbox" checked="true" id="toggle-header">
-                </label>
-            </div>
+<!-- ═══════════════════════════════════════════════
+     HEADER
+════════════════════════════════════════════════ -->
+<header id="app-header" role="banner">
+  <div class="header-inner">
+
+    <div class="header-left">
+      <button class="sidebar-toggle-btn" id="sidebar-toggle" aria-label="Toggle sidebar" title="Toggle sidebar">
+        <i class="fas fa-bars"></i>
+      </button>
+      <a href="#dashboard" class="header-logo-link" aria-label="Go to Dashboard">
+        <div class="logo-mark" aria-hidden="true"><i class="fab fa-twitch"></i></div>
+        <div class="logo-text">
+          <div class="logo-title">CPM <span>v2</span></div>
+          <div class="logo-sub">Analytics</div>
         </div>
-        <div class="columns">
-            <div class="column is-narrow">
-                <div class="tabs">
-                    <ul id="streamers-list"></ul>
-                </div>
-            </div>
-            <div class="column">
-                <div class="box" id="chart" style="padding: 0.30rem;"></div>
-            </div>
-        </div>
-        <div class="columns">
-            <div class="column is-12">
-                <div class="box" id="log-box" style="padding: 0.30rem; display: none;">
-                    <pre id="log-content">In your run.py file set save=True in logger_settings to save logs to a file.&#10;&#13;</pre>
-                </div>
-            </div>
-        </div>
+      </a>
     </div>
-</body>
 
-<script type="text/javascript">
-    // n.b. Seems that we are unable to call Flask variable in JS code imported from JS file.
-    // That's why "link[href='{{url_for('static', filename='dark-theme.css')}}']", {{ refresh }}, {{ daysAgo }} are here.
+    <nav class="header-nav" role="navigation" aria-label="Main navigation">
+      <a href="#dashboard" class="nav-link is-active" data-view="dashboard">
+        <i class="fas fa-chart-pie" aria-hidden="true"></i>
+        <span>Dashboard</span>
+      </a>
+      <a href="#compare" class="nav-link" data-view="compare">
+        <i class="fas fa-code-compare" aria-hidden="true"></i>
+        <span>Compare</span>
+      </a>
+    </nav>
 
-    function toggleDarkMode() {
-        var darkMode = $('#dark-mode').prop("checked")
-        $("link[href='{{url_for('static', filename='dark-theme.css')}}']").prop("disabled", !darkMode);
-        chart.updateOptions({
-            colors: darkMode === true ? ["#f9826c"] : ['#008ffb'],
-            chart: {
-                foreColor: darkMode === true ? "#fff" : '#373d3f'
-            },
-            tooltip: {
-                theme: darkMode === true ? "dark" : "light"
-            }
-        })
-    }
-    var refresh = parseInt("{{ refresh }}");
-    var daysAgo = parseInt("{{ daysAgo }}");
+    <div class="header-right">
+      <div class="theme-switcher" role="group" aria-label="Choose color theme">
+        <button class="theme-btn" data-theme="gold" aria-label="Gold theme" title="Gold theme">
+          <span class="theme-dot"></span>
+        </button>
+        <button class="theme-btn" data-theme="red" aria-label="Red theme" title="Red theme">
+          <span class="theme-dot"></span>
+        </button>
+        <button class="theme-btn" data-theme="purple" aria-label="Purple theme" title="Purple theme">
+          <span class="theme-dot"></span>
+        </button>
+      </div>
+
+      <label class="toggle-switch compact" title="Dark / Light">
+        <input type="checkbox" checked id="dark-mode" aria-label="Dark mode">
+        <span class="toggle-track" aria-hidden="true"></span>
+        <span class="toggle-label"><i class="fas fa-moon"></i></span>
+      </label>
+
+      <div class="badge-row" aria-label="Project badges">
+        <a href="https://github.com/Tkd-Alex/Twitch-Channel-Points-Miner-v2/blob/master/LICENSE" target="_blank" rel="noopener noreferrer">
+          <img loading="lazy" alt="MIT" src="https://img.shields.io/github/license/Tkd-Alex/Twitch-Channel-Points-Miner-v2">
+        </a>
+        <a href="https://github.com/rdavydov/Twitch-Channel-Points-Miner-v2" target="_blank" rel="noopener noreferrer">
+          <img loading="lazy" alt="Last commit" src="https://img.shields.io/github/last-commit/rdavydov/Twitch-Channel-Points-Miner-v2">
+        </a>
+      </div>
+    </div>
+
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════
+     APP SHELL  (sidebar + main)
+════════════════════════════════════════════════ -->
+<div class="app-shell">
+
+  <!-- ── SIDEBAR ───────────────────────────────── -->
+  <aside class="app-sidebar" id="app-sidebar" aria-label="Streamer list">
+
+    <div class="sidebar-search">
+      <i class="fas fa-search" aria-hidden="true"></i>
+      <input type="text" id="sidebar-search" placeholder="Search streamers…"
+             aria-label="Search streamers" autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="sidebar-section-label">
+      <span>Streamers</span>
+      <button class="btn-icon" id="sort-btn" aria-label="Sort options" title="Sort">
+        <i class="fas fa-arrow-up-wide-short"></i>
+        <span id="sort-label-short">A–Z</span>
+      </button>
+    </div>
+
+    <!-- Sort dropdown (inside sidebar for clean layering) -->
+    <div class="sort-dropdown" id="sort-dropdown" role="listbox" aria-label="Sort options" hidden>
+      <button class="sort-opt is-active" data-sort="Name ascending">Name A–Z</button>
+      <button class="sort-opt" data-sort="Name descending">Name Z–A</button>
+      <button class="sort-opt" data-sort="Points descending">Points ↓</button>
+      <button class="sort-opt" data-sort="Points ascending">Points ↑</button>
+      <button class="sort-opt" data-sort="Last activity descending">Last active ↓</button>
+      <button class="sort-opt" data-sort="Last activity ascending">Last active ↑</button>
+    </div>
+
+    <ul id="streamers-list" role="list"></ul>
+
+    <div class="sidebar-compare-hint" id="compare-hint" hidden>
+      <i class="fas fa-circle-info"></i>
+      <span>Click streamers to add to comparison</span>
+    </div>
+
+  </aside>
+
+  <!-- ── MAIN CONTENT ──────────────────────────── -->
+  <main class="app-main" id="app-main" role="main">
+
+    <!-- ═══════════════════════════════
+         VIEW: DASHBOARD
+    ═══════════════════════════════ -->
+    <div class="view" id="view-dashboard">
+
+      <div class="view-header">
+        <h1 class="view-title">
+          <i class="fas fa-gauge-high" aria-hidden="true"></i>
+          Overview
+        </h1>
+        <span class="view-subtitle" id="dash-last-updated">Loading…</span>
+      </div>
+
+      <!-- Global stats row -->
+      <div class="stats-grid" id="dash-stats-grid">
+        <div class="stat-card s-accent">
+          <div class="stat-inner">
+            <div class="stat-label">Tracking Since</div>
+            <div class="stat-val" id="ds-since">--</div>
+          </div>
+          <i class="fas fa-clock stat-icon-bg" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Total Points (all)</div>
+            <div class="stat-val" id="ds-total">--</div>
+          </div>
+          <i class="fas fa-coins stat-icon-bg" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Active Streamers</div>
+            <div class="stat-val" id="ds-count">--</div>
+          </div>
+          <i class="fas fa-satellite-dish stat-icon-bg" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Events (cached)</div>
+            <div class="stat-val" id="ds-events">--</div>
+          </div>
+          <i class="fas fa-bolt stat-icon-bg" aria-hidden="true"></i>
+        </div>
+      </div>
+
+      <!-- Top 3 Streamers -->
+      <div class="section-block">
+        <div class="section-header">
+          <h2 class="section-title"><i class="fas fa-trophy" aria-hidden="true"></i> Top Streamers</h2>
+        </div>
+        <div class="top3-grid" id="top3-grid">
+          <div class="top3-skeleton" aria-hidden="true"></div>
+          <div class="top3-skeleton" aria-hidden="true"></div>
+          <div class="top3-skeleton" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <!-- Best Days of Week -->
+      <div class="two-col-grid">
+        <div class="section-block">
+          <div class="section-header">
+            <h2 class="section-title"><i class="fas fa-calendar-week" aria-hidden="true"></i> Best Days (Global)</h2>
+            <span class="section-hint">Avg. gain per weekday across all cached data</span>
+          </div>
+          <div class="chart-card compact">
+            <div id="chart-weekly-global" role="img" aria-label="Weekly distribution chart"></div>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-header">
+            <h2 class="section-title"><i class="fas fa-bolt" aria-hidden="true"></i> Recent Events</h2>
+          </div>
+          <div class="activity-feed" id="activity-feed">
+            <div class="feed-empty">
+              <i class="fas fa-satellite-dish"></i>
+              <span>Select a streamer to load events</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /view-dashboard -->
+
+
+    <!-- ═══════════════════════════════
+         VIEW: STREAMER
+    ═══════════════════════════════ -->
+    <div class="view" id="view-streamer" hidden>
+
+      <!-- Streamer hero bar -->
+      <div class="streamer-hero">
+        <button class="back-btn" id="back-btn" aria-label="Back to dashboard">
+          <i class="fas fa-arrow-left"></i>
+        </button>
+        <div class="streamer-hero-info">
+          <h1 class="streamer-name" id="streamer-name-heading">--</h1>
+          <div class="streamer-meta-badges" id="streamer-meta-badges"></div>
+        </div>
+        <div class="streamer-hero-actions">
+          <div class="chart-type-group" role="group" aria-label="Chart type">
+            <button class="chart-type-btn is-active" data-type="area" title="Area chart">
+              <i class="fas fa-chart-area"></i>
+            </button>
+            <button class="chart-type-btn" data-type="line" title="Line chart">
+              <i class="fas fa-chart-line"></i>
+            </button>
+            <button class="chart-type-btn" data-type="bar" title="Bar chart">
+              <i class="fas fa-chart-bar"></i>
+            </button>
+          </div>
+          <button class="btn btn-sm" id="btn-export-png" title="Save chart as PNG">
+            <i class="fas fa-image" aria-hidden="true"></i> Export PNG
+          </button>
+        </div>
+      </div>
+
+      <!-- Extended stats cards -->
+      <div class="stats-grid" id="streamer-stats-grid">
+        <div class="stat-card s-accent">
+          <div class="stat-inner">
+            <div class="stat-label">Current Points</div>
+            <div class="stat-val" id="s-current">--</div>
+          </div>
+          <i class="fas fa-coins stat-icon-bg" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Total Gained</div>
+            <div class="stat-val" id="s-gained">--</div>
+          </div>
+          <i class="fas fa-arrow-trend-up stat-icon-bg" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Avg / Day</div>
+            <div class="stat-val" id="s-avg-day">--</div>
+          </div>
+          <i class="fas fa-calendar-day stat-icon-bg" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Best Day</div>
+            <div class="stat-val" id="s-best-day">--</div>
+          </div>
+          <i class="fas fa-fire stat-icon-bg" aria-hidden="true"></i>
+        </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Pts / Hour</div>
+            <div class="stat-val" id="s-rate">--</div>
+          </div>
+          <i class="fas fa-gauge-high stat-icon-bg" aria-hidden="true"></i>
+        </div>
+      </div>
+
+      <!-- Main chart card -->
+      <div class="chart-card" id="streamer-chart-card">
+        <div class="chart-toolbar">
+          <div class="date-range-bar">
+            <span class="date-label"><i class="fas fa-calendar-day" aria-hidden="true"></i> From</span>
+            <input class="input" type="date" id="startDate" aria-label="Start date">
+            <span class="date-sep" aria-hidden="true">→</span>
+            <span class="date-label">To</span>
+            <input class="input" type="date" id="endDate" aria-label="End date">
+          </div>
+          <div class="chart-toggles">
+            <label class="toggle-switch compact">
+              <input type="checkbox" checked id="annotations" aria-label="Show event annotations">
+              <span class="toggle-track" aria-hidden="true"></span>
+              <span class="toggle-label">Events</span>
+            </label>
+          </div>
+        </div>
+        <div id="chart" role="img" aria-label="Channel points over time"></div>
+      </div>
+
+      <!-- Bottom grid: weekly + timeline -->
+      <div class="two-col-grid">
+
+        <div class="section-block">
+          <div class="section-header">
+            <h2 class="section-title"><i class="fas fa-calendar-week" aria-hidden="true"></i> Best Days</h2>
+            <span class="section-hint">Avg. gain per weekday</span>
+          </div>
+          <div class="chart-card compact">
+            <div id="chart-weekly-streamer" role="img" aria-label="Streamer weekly distribution"></div>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-header">
+            <h2 class="section-title"><i class="fas fa-timeline" aria-hidden="true"></i> Event Timeline</h2>
+          </div>
+          <div class="annotation-timeline" id="annotation-timeline" role="log" aria-label="Events timeline">
+            <div class="timeline-empty">
+              <i class="fas fa-calendar-xmark"></i>
+              <span>No events in selected range</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div><!-- /view-streamer -->
+
+
+    <!-- ═══════════════════════════════
+         VIEW: COMPARE
+    ═══════════════════════════════ -->
+    <div class="view" id="view-compare" hidden>
+
+      <div class="view-header">
+        <h1 class="view-title">
+          <i class="fas fa-code-compare" aria-hidden="true"></i>
+          Multi-Streamer Comparison
+        </h1>
+        <span class="view-subtitle">Select streamers from the sidebar to compare</span>
+      </div>
+
+      <div class="stats-grid" id="compare-stats-grid"></div>
+
+      <div class="chart-card">
+        <div class="chart-toolbar">
+          <div class="date-range-bar">
+            <span class="date-label"><i class="fas fa-calendar-day" aria-hidden="true"></i> From</span>
+            <input class="input" type="date" id="startDateCompare" aria-label="Compare start date">
+            <span class="date-sep" aria-hidden="true">→</span>
+            <span class="date-label">To</span>
+            <input class="input" type="date" id="endDateCompare" aria-label="Compare end date">
+          </div>
+        </div>
+        <div id="chart-compare" role="img" aria-label="Multi-streamer comparison chart"></div>
+        <div class="compare-empty" id="compare-empty">
+          <i class="fas fa-hand-pointer" aria-hidden="true"></i>
+          <span>Select at least 2 streamers from the sidebar</span>
+        </div>
+      </div>
+
+    </div><!-- /view-compare -->
+
+  </main>
+</div><!-- /app-shell -->
+
+<!-- ═══════════════════════════════════════════════
+     LOG SECTION
+════════════════════════════════════════════════ -->
+<div class="log-section" id="log-box" hidden>
+  <div class="log-header">
+    <span><i class="fas fa-terminal" aria-hidden="true"></i> Application Log</span>
+    <button id="auto-update-log" class="btn btn-sm" aria-label="Pause or resume log updates" title="Pause/Resume">
+      ⏸️
+    </button>
+  </div>
+  <pre id="log-content" aria-live="polite" aria-label="Application log">Set save=True in logger_settings to save logs to a file.
+</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     FOOTER BAR
+════════════════════════════════════════════════ -->
+<div class="footer-bar" role="contentinfo">
+  <label class="toggle-switch compact">
+    <input type="checkbox" id="log" aria-label="Show log">
+    <span class="toggle-track" aria-hidden="true"></span>
+    <span class="toggle-label"><i class="fas fa-terminal" aria-hidden="true"></i> Log</span>
+  </label>
+  <span class="footer-info">
+    <i class="fas fa-circle footer-live" aria-hidden="true"></i>
+    CPM v2 &middot; <span id="footer-refresh-info">Auto-refresh active</span>
+  </span>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     BOOT SCRIPT
+════════════════════════════════════════════════ -->
+<script>
+  // Flask template vars injected here, read by script.js
+  const REFRESH_INTERVAL_SECONDS = parseInt('{{ refresh }}') || 300;
+  const daysAgo = parseInt('{{ daysAgo }}') || 7;
 </script>
-<script type="text/javascript" src="{{url_for('static', filename='script.js')}}"></script>
-
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
 </html>
