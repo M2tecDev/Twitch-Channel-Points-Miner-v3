@@ -1362,3 +1362,726 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Init log ──────────────────────────────
     initLog();
 });
+/* ─── [M] Safari-safe scroll helper ─────────────────────────────────────── */
+function safeSmoothScroll(el, opts) {
+    if (!el) return;
+    try {
+        el.scrollIntoView(opts);
+    } catch (_) {
+        try { el.scrollIntoView(true); } catch (__) {}
+    }
+}
+
+/* ─── [H] Patch weeklyAgg — clamp negatives to 0 ────────────────────────── */
+if (typeof weeklyAgg === 'function') {
+    const _wkOrig = weeklyAgg;
+    weeklyAgg = function(series) {
+        const r = _wkOrig(series);
+        return r.map(function(v) { return Math.max(0, v || 0); });
+    };
+}
+
+/* ─── [L] Cache cap (max 30 entries) ────────────────────────────────────── */
+const _CACHE_MAX = 30;
+function _cacheSet(name, value) {
+    state.seriesCache.set(name, value);
+    if (state.seriesCache.size > _CACHE_MAX) {
+        var firstKey = state.seriesCache.keys().next().value;
+        state.seriesCache.delete(firstKey);
+    }
+}
+/* Patch ensureSeriesCache to use bounded setter */
+if (typeof ensureSeriesCache === 'function') {
+    const _ensureOrig = ensureSeriesCache;
+    ensureSeriesCache = async function(name) {
+        var cached = state.seriesCache.get(name);
+        if (cached && (Date.now() - cached.cachedAt) < 300000) return;
+        var start = state.startDate || (function() {
+            var d = new Date(); d.setDate(d.getDate() - DAYS_BACK); return d;
+        }());
+        var end = state.endDate || new Date();
+        try {
+            var data = await fetchStreamerData(name, start, end, new AbortController().signal);
+            _cacheSet(name, {
+                series:      data.series || [],
+                annotations: (data.annotations || []).map(function(a, i) { return Object.assign({}, a, {id: 'a' + i}); }),
+                cachedAt:    Date.now(),
+            });
+        } catch(e) {}
+    };
+}
+
+/* ─── [L] preloadStreakData runs only once + updates events count after ─── */
+state.preloadDone = false;
+if (typeof preloadStreakData === 'function') {
+    const _preloadOrig = preloadStreakData;
+    preloadStreakData = async function() {
+        if (state.preloadDone) return;
+        state.preloadDone = true;
+        await _preloadOrig();
+        /* ─── [A] Update event count on dashboard after preload ─── */
+        if (state.view === 'dashboard') {
+            var eventCount = 0;
+            state.seriesCache.forEach(function(d) { eventCount += (d.annotations ? d.annotations.length : 0); });
+            var el = document.getElementById('ds-events');
+            if (el) el.textContent = String(eventCount);
+            /* Also rebuild activity feed now that we have more data */
+            if (typeof renderActivityFeed === 'function') renderActivityFeed();
+            /* And re-render sidebar so streak badges appear */
+            renderSidebar();
+        }
+    };
+}
+
+/* ─── [I] Better renderAnnotationTimeline ───────────────────────────────── */
+if (typeof renderAnnotationTimeline === 'function') {
+    renderAnnotationTimeline = function(annotations) {
+        var tl = document.getElementById('annotation-timeline');
+        if (!tl) return;
+
+        var COLOR_META = {
+            '#36b535': {icon: '🏆', label: 'WIN',    cls: 'tl-win'},
+            '#ff4545': {icon: '❌', label: 'LOSE',   cls: 'tl-lose'},
+            '#ffe045': {icon: '🎯', label: 'BET',    cls: 'tl-bet'},
+            '#45c1ff': {icon: '🔥', label: 'STREAK', cls: 'tl-streak'},
+        };
+
+        var valid = (annotations || []).filter(function(a) {
+            return a && a.x && (a.borderColor || (a.label && a.label.text));
+        });
+
+        if (!valid.length) {
+            tl.innerHTML = '';
+            var empty = document.createElement('div');
+            empty.className = 'timeline-empty';
+            empty.innerHTML = '<i class="fas fa-calendar-xmark"></i><span>No events in selected range</span>';
+            tl.appendChild(empty);
+            return;
+        }
+
+        var sorted = valid.slice().sort(function(a, b) { return (b.x || 0) - (a.x || 0); });
+        var frag   = document.createDocumentFragment();
+
+        sorted.forEach(function(a) {
+            var meta = COLOR_META[a.borderColor] || {icon: '⚡', label: 'EVENT', cls: ''};
+            var item = document.createElement('div');
+            item.className = 'timeline-item ' + meta.cls;
+
+            var dot = document.createElement('div');
+            dot.className = 'timeline-dot';
+            dot.style.background = a.borderColor || 'var(--accent-b)';
+            dot.setAttribute('aria-hidden', 'true');
+
+            var body = document.createElement('div');
+            body.className = 'timeline-body';
+
+            var timeEl = document.createElement('div');
+            timeEl.className = 'timeline-time';
+            timeEl.textContent = a.x ? fmtTs(a.x) : '—';
+
+            var labelEl = document.createElement('div');
+            labelEl.className = 'timeline-label';
+            labelEl.textContent = (a.label && a.label.text) ? a.label.text : meta.label;
+
+            var badge = document.createElement('span');
+            badge.className = 'timeline-badge';
+            badge.textContent = meta.icon + ' ' + meta.label;
+
+            body.appendChild(timeEl);
+            body.appendChild(labelEl);
+            body.appendChild(badge);
+            item.appendChild(dot);
+            item.appendChild(body);
+            frag.appendChild(item);
+        });
+
+        tl.innerHTML = '';
+        tl.appendChild(frag);
+    };
+}
+
+/* ─── [D] parseRoute + showView + router overrides ──────────────────────── */
+var _pRouteOrig = parseRoute;
+parseRoute = function() {
+    var h = location.hash || '#dashboard';
+    if (h === '#bets')     return {view: 'bets'};
+    if (h === '#settings') return {view: 'settings'};
+    return _pRouteOrig();
+};
+
+var _showViewOrig = showView;
+showView = function(id) {
+    var ALL = ['view-dashboard','view-streamer','view-compare','view-bets','view-settings'];
+    ALL.forEach(function(v) {
+        var el = document.getElementById(v);
+        if (el) el.hidden = (v !== id);
+    });
+};
+
+var _routerOrig = router;
+router = async function() {
+    var route    = parseRoute();
+    var prevView = state.view;
+    state.view   = route.view;
+
+    /* [D] set data-current-view so CSS can hide sidebar in settings */
+    var shell = document.querySelector('.app-shell');
+    if (shell) shell.dataset.currentView = route.view;
+
+    if (prevView === 'compare' && route.view !== 'compare') {
+        state.compareSet.clear();
+    }
+
+    document.querySelectorAll('.nav-link').forEach(function(a) {
+        a.classList.toggle('is-active', a.dataset.view === route.view);
+    });
+
+    var hint = document.getElementById('compare-hint');
+    if (hint) hint.hidden = (route.view !== 'compare');
+
+    clearTimeout(refreshTimer);
+
+    switch (route.view) {
+        case 'dashboard': await renderDashboard(); break;
+        case 'streamer':  await renderStreamer(route.param); break;
+        case 'compare':   await renderCompare();  break;
+        case 'bets':      await renderBets();     break;
+        case 'settings':  await renderSettings(); break;
+    }
+};
+
+/* ─── Status polling (sidebar dots) ─────────────────────────────────────── */
+state.statusMap = {};
+
+async function fetchStatus() {
+    try {
+        var r = await fetch('./status');
+        if (r.ok) { state.statusMap = await r.json(); renderSidebar(); }
+    } catch(e) {}
+}
+setInterval(fetchStatus, 30000);
+fetchStatus();
+
+var _sbOrig = renderSidebar;
+renderSidebar = function() {
+    _sbOrig();
+    var ul = document.getElementById('streamers-list');
+    if (!ul) return;
+    ul.querySelectorAll('li[data-name]').forEach(function(li) {
+        var name = li.dataset.name;
+        var info = state.statusMap[name] || state.statusMap[name ? name.replace('.json','') : ''];
+        if (!info) return;
+        var old = li.querySelector('.status-dot');
+        if (old) old.parentNode.removeChild(old);
+        var dot = document.createElement('span');
+        dot.className = 'status-dot ' + (info.is_online ? 'online' : 'offline');
+        dot.title = info.is_online ? 'Online' : 'Offline';
+        var a = li.querySelector('a');
+        if (a && a.firstChild) a.insertBefore(dot, a.firstChild);
+        else if (a) a.appendChild(dot);
+    });
+};
+
+/* ─── [J] Mobile: sidebar closes after streamer click ───────────────────── */
+document.addEventListener('click', function(e) {
+    var li = e.target && e.target.closest ? e.target.closest('#streamers-list li[data-name]') : null;
+    if (!li || state.view === 'compare') return;
+    if (window.innerWidth < 900) {
+        var sidebar = document.getElementById('app-sidebar');
+        if (sidebar) sidebar.classList.remove('is-open');
+    }
+}, true);
+
+/* ─── [G] Gear button in streamer hero ──────────────────────────────────── */
+if (typeof renderStreamer === 'function') {
+    var _rsOrig = renderStreamer;
+    renderStreamer = async function(name) {
+        await _rsOrig(name);
+
+        var old = document.getElementById('btn-streamer-settings');
+        if (old && old.parentNode) old.parentNode.removeChild(old);
+
+        var actions = document.querySelector('.streamer-hero-actions');
+        if (!actions || !name) return;
+
+        var btn = document.createElement('button');
+        btn.id        = 'btn-streamer-settings';
+        btn.className = 'btn btn-sm';
+        btn.title     = 'Settings for this streamer';
+        btn.innerHTML = '<i class="fas fa-sliders"></i>';
+        btn.onclick   = function() {
+            var clean = name.replace('.json','');
+            navigate('#settings');
+            setTimeout(function() {
+                /* Switch to Streamers tab */
+                document.querySelectorAll('.stab').forEach(function(b) {
+                    var on = b.dataset.stab === 'streamers';
+                    b.classList.toggle('is-active', on);
+                    b.setAttribute('aria-selected', String(on));
+                });
+                document.querySelectorAll('.stab-panel').forEach(function(p) {
+                    p.hidden = (p.id !== 'stab-streamers');
+                });
+                var card = document.querySelector('.streamer-setting-card[data-name="' + clean + '"]');
+                if (card) {
+                    safeSmoothScroll(card, {behavior: 'smooth', block: 'center'});
+                    card.classList.add('is-highlighted');
+                    setTimeout(function() { card.classList.remove('is-highlighted'); }, 2500);
+                }
+            }, 350);
+        };
+
+        /* Prepend before first child of actions */
+        if (actions.firstChild) actions.insertBefore(btn, actions.firstChild);
+        else actions.appendChild(btn);
+    };
+}
+
+/* ─── API helpers ────────────────────────────────────────────────────────── */
+async function fetchConfig() {
+    var r = await fetch('./config');
+    if (!r.ok) throw new Error('GET /config: ' + r.status);
+    return r.json();
+}
+async function saveConfig(data) {
+    var r = await fetch('./config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    });
+    return r.json();
+}
+async function apiAddStreamer(username) {
+    var r = await fetch('./config/streamer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: username}),
+    });
+    return r.json();
+}
+async function apiRemoveStreamer(username) {
+    var r = await fetch('./config/streamer/' + encodeURIComponent(username), {method: 'DELETE'});
+    return r.json();
+}
+async function apiPatchStreamer(username, patch) {
+    var r = await fetch('./config/streamer/' + encodeURIComponent(username), {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(patch),
+    });
+    return r.json();
+}
+async function fetchBets() {
+    var r = await fetch('./bets');
+    if (!r.ok) throw new Error('GET /bets: ' + r.status);
+    return r.json();
+}
+
+/* ─── Toast + restart banner ─────────────────────────────────────────────── */
+function showSettingsToast(msg, isError) {
+    var t = document.getElementById('settings-toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.className   = 'settings-toast ' + (isError ? 'is-error' : 'is-ok');
+    t.hidden      = false;
+    clearTimeout(t._tmr);
+    t._tmr = setTimeout(function() { t.hidden = true; }, 4000);
+}
+function showRestartBanner() {
+    var b = document.getElementById('settings-restart-banner');
+    if (!b) return;
+    b.hidden = false;
+    clearTimeout(b._tmr);
+    b._tmr = setTimeout(function() { b.hidden = true; }, 15000);
+}
+
+/* ─── VIEW: BETS ─────────────────────────────────────────────────────────── */
+var _betsData = null;
+
+async function renderBets() {
+    showView('view-bets');
+    document.title = 'Bets — CPM v2';
+    var tbody = document.getElementById('bets-tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="bets-loading"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
+
+    try {
+        var bets = await (async function() { var r = await fetch('./bets'); if (!r.ok) throw new Error(r.status); return r.json(); }());
+        _betsData = bets;
+
+        var wins   = bets.filter(function(b) { return b.result === 'WIN'; }).length;
+        var losses = bets.filter(function(b) { return b.result === 'LOSE'; }).length;
+        var rate   = (wins + losses) > 0 ? Math.round(wins / (wins + losses) * 100) : 0;
+
+        function s_(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+        s_('bets-total',   String(bets.length));
+        s_('bets-wins',    String(wins));
+        s_('bets-losses',  String(losses));
+        s_('bets-winrate', rate + '%');
+
+        var sf = document.getElementById('bets-filter-streamer');
+        if (sf) {
+            var names = [];
+            bets.forEach(function(b) { if (names.indexOf(b.streamer) === -1) names.push(b.streamer); });
+            names.sort();
+            sf.innerHTML = '<option value="">All streamers</option>' +
+                names.map(function(n) { return '<option value="' + n + '">' + n + '</option>'; }).join('');
+        }
+
+        function renderTable() {
+            var sf2 = (document.getElementById('bets-filter-streamer') || {}).value || '';
+            var rf  = (document.getElementById('bets-filter-result')   || {}).value || '';
+            var filtered = (_betsData || []).filter(function(b) {
+                return (!sf2 || b.streamer === sf2) && (!rf || b.result === rf);
+            });
+            if (!filtered.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="bets-loading">No bets match the filter.</td></tr>';
+                return;
+            }
+            var BADGES = {
+                WIN:    '<span class="bet-badge bet-win"><i class="fas fa-trophy"></i> WIN</span>',
+                LOSE:   '<span class="bet-badge bet-lose"><i class="fas fa-times"></i> LOSE</span>',
+                PLACED: '<span class="bet-badge bet-placed"><i class="fas fa-hourglass-half"></i> PLACED</span>',
+            };
+            tbody.innerHTML = filtered.map(function(b) {
+                return '<tr>' +
+                    '<td class="bets-ts">' + new Date(b.timestamp).toLocaleString('de-DE') + '</td>' +
+                    '<td class="bets-streamer"><a href="#streamer/' + encodeURIComponent(b.streamer) + '">' + b.streamer + '</a></td>' +
+                    '<td class="bets-title" title="' + (b.title || '') + '">' + (b.title || '—') + '</td>' +
+                    '<td>' + (BADGES[b.result] || b.result) + '</td>' +
+                    '<td class="bets-pts">' + fmt(b.points_at) + '</td>' +
+                '</tr>';
+            }).join('');
+        }
+
+        renderTable();
+        var sfEl = document.getElementById('bets-filter-streamer');
+        var rfEl = document.getElementById('bets-filter-result');
+        if (sfEl) sfEl.onchange = renderTable;
+        if (rfEl) rfEl.onchange = renderTable;
+
+    } catch (err) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="bets-loading is-error"><i class="fas fa-triangle-exclamation"></i> ' + err.message + '</td></tr>';
+    }
+    renderSidebar();
+}
+
+/* ─── VIEW: SETTINGS ─────────────────────────────────────────────────────── */
+var _settingsCfg = null;
+
+async function renderSettings() {
+    showView('view-settings');
+    document.title = 'Settings — CPM v2';
+
+    /* Tab switching */
+    document.querySelectorAll('.stab').forEach(function(btn) {
+        btn.onclick = function() {
+            document.querySelectorAll('.stab').forEach(function(b) {
+                b.classList.remove('is-active');
+                b.setAttribute('aria-selected', 'false');
+            });
+            document.querySelectorAll('.stab-panel').forEach(function(p) { p.hidden = true; });
+            btn.classList.add('is-active');
+            btn.setAttribute('aria-selected', 'true');
+            var panel = document.getElementById('stab-' + btn.dataset.stab);
+            if (panel) panel.hidden = false;
+        };
+    });
+
+    /* [F] Use onclick — never stacks */
+    var saveBtn = document.getElementById('btn-save-global');
+    if (saveBtn) saveBtn.onclick = saveGlobalSettings;
+
+    var addBtn = document.getElementById('btn-add-streamer');
+    if (addBtn) addBtn.onclick = handleAddStreamer;
+
+    var addInp = document.getElementById('new-streamer-input');
+    if (addInp) addInp.onkeydown = function(e) { if (e.key === 'Enter') handleAddStreamer(); };
+
+    /* [B] /config never 404 anymore; server auto-fills streamers from analytics */
+    try {
+        _settingsCfg = await fetchConfig();
+    } catch (err) {
+        showSettingsToast('Could not reach server: ' + err.message, true);
+        _settingsCfg = {global_settings: {}, streamers: []};
+    }
+
+    /* [E] Always populate form with correct values */
+    populateGlobalForm(_settingsCfg);
+    /* [C] Always show streamer cards (auto-populated from analytics if config empty) */
+    renderStreamersSettings(_settingsCfg);
+
+    renderSidebar();
+}
+
+async function handleAddStreamer() {
+    var inp = document.getElementById('new-streamer-input');
+    var val = inp ? inp.value.trim().toLowerCase() : '';
+    if (!val) { showSettingsToast('Enter a streamer username', true); return; }
+
+    var res = await apiAddStreamer(val);
+    if (res.status === 'ok') {
+        showSettingsToast(res.message);
+        showRestartBanner();
+        if (inp) inp.value = '';
+        _settingsCfg = await fetchConfig();
+        renderStreamersSettings(_settingsCfg);
+    } else {
+        showSettingsToast(res.error || 'Failed to add', true);
+    }
+}
+
+/* [E] Form population — explicit disabled=false + full fallbacks */
+function populateGlobalForm(config) {
+    var gs  = (config && config.global_settings) ? config.global_settings : {};
+    var bet = (gs && gs.bet) ? gs.bet : {};
+
+    function sc(id, val, def) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.checked  = (val !== undefined && val !== null) ? Boolean(val) : def;
+        el.disabled = false;
+        el.removeAttribute('disabled');
+    }
+    function sv(id, val, def) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.value    = (val !== undefined && val !== null) ? val : def;
+        el.disabled = false;
+        el.removeAttribute('disabled');
+    }
+
+    sc('g-make_predictions', gs.make_predictions, true);
+    sc('g-follow_raid',      gs.follow_raid,      true);
+    sc('g-claim_drops',      gs.claim_drops,      true);
+    sc('g-claim_moments',    gs.claim_moments,    true);
+    sc('g-watch_streak',     gs.watch_streak,     true);
+    sc('g-community_goals',  gs.community_goals,  false);
+    sc('g-stealth_mode',     bet.stealth_mode,    true);
+
+    sv('g-strategy',       bet.strategy,       'SMART');
+    sv('g-percentage',     bet.percentage,     5);
+    sv('g-percentage_gap', bet.percentage_gap, 20);
+    sv('g-max_points',     bet.max_points,     50000);
+    sv('g-minimum_points', bet.minimum_points, 0);
+    sv('g-delay_mode',     bet.delay_mode,     'FROM_END');
+    sv('g-delay',          bet.delay,          6);
+    sv('g-chat',           gs.chat,            'ONLINE');
+}
+
+async function saveGlobalSettings() {
+    if (!_settingsCfg) _settingsCfg = {};
+
+    function gc(id) { var el = document.getElementById(id); return el ? el.checked : false; }
+    function gn(id, d) { var el = document.getElementById(id); return el ? (parseFloat(el.value) || d) : d; }
+    function gs(id, d) { var el = document.getElementById(id); return (el && el.value) ? el.value : d; }
+
+    _settingsCfg.global_settings = {
+        make_predictions: gc('g-make_predictions'),
+        follow_raid:      gc('g-follow_raid'),
+        claim_drops:      gc('g-claim_drops'),
+        claim_moments:    gc('g-claim_moments'),
+        watch_streak:     gc('g-watch_streak'),
+        community_goals:  gc('g-community_goals'),
+        chat:             gs('g-chat', 'ONLINE'),
+        bet: {
+            strategy:       gs('g-strategy', 'SMART'),
+            percentage:     gn('g-percentage', 5),
+            percentage_gap: gn('g-percentage_gap', 20),
+            max_points:     gn('g-max_points', 50000),
+            minimum_points: gn('g-minimum_points', 0),
+            stealth_mode:   gc('g-stealth_mode'),
+            delay_mode:     gs('g-delay_mode', 'FROM_END'),
+            delay:          gn('g-delay', 6),
+            filter_condition: null,
+        },
+    };
+
+    try {
+        var res = await saveConfig(_settingsCfg);
+        showSettingsToast(res.message || '✓ Saved');
+    } catch (err) {
+        showSettingsToast('Save failed: ' + err.message, true);
+    }
+}
+
+/* [C] Render streamer cards (auto-populated from analytics if list was empty) */
+function renderStreamersSettings(config) {
+    var container = document.getElementById('streamers-settings-list');
+    if (!container) return;
+
+    var streamers = (config && config.streamers) ? config.streamers : [];
+    var isAutofilled = !window._settingsCfgFromDisk;  // flag set by server — not used here
+
+    if (!streamers.length) {
+        container.innerHTML = '<div class="settings-loading">No streamers found. Add one above or run the miner first so analytics files are created.</div>';
+        return;
+    }
+
+    container.innerHTML = '';
+    var STRATEGIES = ['SMART','MOST_VOTED','HIGH_ODDS','PERCENTAGE','SMART_MONEY','NUMBER_1','NUMBER_2'];
+
+    streamers.forEach(function(s) {
+        var sc  = (s.settings) ? s.settings : {};
+        var bet = (sc.bet) ? sc.bet : {};
+        var enabled = s.enabled !== false;
+
+        var card = document.createElement('div');
+        card.className    = 'streamer-setting-card';
+        card.dataset.name = s.username;
+
+        var stratOpts = STRATEGIES.map(function(v) {
+            return '<option value="' + v + '"' + (bet.strategy === v ? ' selected' : '') + '>' + v + '</option>';
+        }).join('');
+
+        card.innerHTML =
+          '<div class="stc-header">' +
+            '<div class="stc-title">' +
+              '<span class="status-dot ' + (enabled ? 'online' : 'offline') + ' stc-enabled-dot"></span>' +
+              '<strong class="stc-name">' + s.username + '</strong>' +
+            '</div>' +
+            '<div class="stc-actions">' +
+              '<label class="stg-toggle compact">' +
+                '<input type="checkbox" class="stc-enabled"' + (enabled ? ' checked' : '') + '>' +
+                '<span class="toggle-track"></span>' +
+                '<span class="stg-lbl">Enabled</span>' +
+              '</label>' +
+              '<button class="btn btn-sm stc-chart-btn" title="View chart"><i class="fas fa-chart-line"></i></button>' +
+              '<button class="btn btn-sm btn-danger stc-remove" title="Remove"><i class="fas fa-trash"></i></button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="stc-body">' +
+            '<label class="stg-toggle">' +
+              '<input type="checkbox" class="stc-use-global"' + (!s.settings ? ' checked' : '') + '>' +
+              '<span class="toggle-track"></span>' +
+              '<span class="stg-lbl">Use global defaults (no individual override)</span>' +
+            '</label>' +
+            '<div class="stc-individual' + (!s.settings ? ' is-hidden' : '') + '">' +
+              '<div class="settings-fields compact">' +
+                '<label class="stg-toggle compact"><input type="checkbox" class="stc-make_predictions"' + (sc.make_predictions !== false ? ' checked' : '') + '><span class="toggle-track"></span><span class="stg-lbl">Make Predictions</span></label>' +
+                '<label class="stg-toggle compact"><input type="checkbox" class="stc-follow_raid"' + (sc.follow_raid !== false ? ' checked' : '') + '><span class="toggle-track"></span><span class="stg-lbl">Follow Raids</span></label>' +
+                '<label class="stg-toggle compact"><input type="checkbox" class="stc-claim_drops"' + (sc.claim_drops !== false ? ' checked' : '') + '><span class="toggle-track"></span><span class="stg-lbl">Claim Drops</span></label>' +
+                '<label class="stg-toggle compact"><input type="checkbox" class="stc-watch_streak"' + (sc.watch_streak !== false ? ' checked' : '') + '><span class="toggle-track"></span><span class="stg-lbl">Watch Streak</span></label>' +
+                '<div class="stg-field"><label class="stg-field-label">Strategy</label><select class="input stg-select stc-strategy">' + stratOpts + '</select></div>' +
+                '<div class="stg-field"><label class="stg-field-label">Max Points</label><input class="input stc-max_points" type="number" min="0" value="' + (bet.max_points !== undefined ? bet.max_points : 50000) + '"></div>' +
+                '<div class="stg-field"><label class="stg-field-label">Min to Bet</label><input class="input stc-minimum_points" type="number" min="0" value="' + (bet.minimum_points !== undefined ? bet.minimum_points : 0) + '"></div>' +
+              '</div>' +
+              '<div class="stc-save-row"><button class="btn btn-primary btn-sm stc-save"><i class="fas fa-floppy-disk"></i> Save</button></div>' +
+            '</div>' +
+          '</div>';
+
+        /* Chart button */
+        card.querySelector('.stc-chart-btn').onclick = function() {
+            navigate('#streamer/' + encodeURIComponent(s.username));
+        };
+
+        /* Use-global toggle */
+        card.querySelector('.stc-use-global').onchange = function() {
+            card.querySelector('.stc-individual').classList.toggle('is-hidden', this.checked);
+        };
+
+        /* Enable/disable */
+        card.querySelector('.stc-enabled').onchange = async function() {
+            var res = await apiPatchStreamer(s.username, {enabled: this.checked});
+            if (res.status === 'ok') {
+                showSettingsToast(s.username + ': ' + (this.checked ? 'enabled' : 'disabled'));
+                var dot = card.querySelector('.stc-enabled-dot');
+                if (dot) { dot.classList.toggle('online', this.checked); dot.classList.toggle('offline', !this.checked); }
+                showRestartBanner();
+            } else {
+                showSettingsToast(res.error || 'Failed', true);
+                this.checked = !this.checked;
+            }
+        };
+
+        /* Remove */
+        card.querySelector('.stc-remove').onclick = async function() {
+            if (!confirm('Remove "' + s.username + '"? This triggers a ~10s restart.')) return;
+            var res = await apiRemoveStreamer(s.username);
+            if (res.status === 'ok') {
+                showSettingsToast(res.message);
+                showRestartBanner();
+                card.parentNode && card.parentNode.removeChild(card);
+            } else {
+                showSettingsToast(res.error || 'Failed', true);
+            }
+        };
+
+        /* Save per-streamer settings */
+        card.querySelector('.stc-save').onclick = async function() {
+            var useGlobal = card.querySelector('.stc-use-global').checked;
+            var patch = useGlobal ? {settings: null} : {
+                settings: {
+                    make_predictions: card.querySelector('.stc-make_predictions').checked,
+                    follow_raid:      card.querySelector('.stc-follow_raid').checked,
+                    claim_drops:      card.querySelector('.stc-claim_drops').checked,
+                    watch_streak:     card.querySelector('.stc-watch_streak').checked,
+                    bet: {
+                        strategy:       card.querySelector('.stc-strategy').value,
+                        max_points:     parseFloat(card.querySelector('.stc-max_points').value) || 50000,
+                        minimum_points: parseFloat(card.querySelector('.stc-minimum_points').value) || 0,
+                    },
+                },
+            };
+            var res = await apiPatchStreamer(s.username, patch);
+            if (res.status === 'ok') showSettingsToast(s.username + ': saved ✓');
+            else showSettingsToast(res.error || 'Save failed', true);
+        };
+
+        container.appendChild(card);
+    });
+}
+
+/* ─── [K] Log level filter ───────────────────────────────────────────────── */
+(function initLogFilter() {
+    var logHeader = document.querySelector('.log-header');
+    if (!logHeader || logHeader.querySelector('.log-level-filter')) return;
+
+    var select = document.createElement('select');
+    select.className = 'log-level-filter';
+    select.title     = 'Log level filter';
+    select.innerHTML =
+        '<option value="1">INFO+</option>' +
+        '<option value="0">DEBUG (all)</option>' +
+        '<option value="2">WARNING+</option>' +
+        '<option value="3">ERROR only</option>';
+    logHeader.appendChild(select);
+
+    var RANKS = {DEBUG: 0, INFO: 1, WARNING: 2, ERROR: 3, WARN: 2};
+
+    select.onchange = function() {
+        var min = parseInt(this.value, 10);
+        var pre = document.getElementById('log-content');
+        if (!pre) return;
+        pre.querySelectorAll('.log-line').forEach(function(el) {
+            el.hidden = (parseInt(el.dataset.rank, 10) || 1) < min;
+        });
+    };
+
+    /* Tag existing and future lines */
+    var pre = document.getElementById('log-content');
+    if (!pre) return;
+
+    function tagLines() {
+        var LEVEL_RE = /\b(DEBUG|INFO|WARNING|WARN|ERROR)\b/;
+        var raw = pre.textContent || '';
+        if (!raw.trim() || pre.querySelector('.log-line')) return;
+        var lines = raw.split('\n');
+        pre.innerHTML = '';
+        lines.forEach(function(line) {
+            var span   = document.createElement('span');
+            span.className = 'log-line';
+            var m = line.match(LEVEL_RE);
+            var lv = m ? m[1] : 'INFO';
+            span.dataset.rank = RANKS[lv] !== undefined ? RANKS[lv] : 1;
+            span.textContent  = line + '\n';
+            pre.appendChild(span);
+        });
+    }
+
+    var obs = new MutationObserver(function() {
+        obs.disconnect();
+        tagLines();
+        obs.observe(pre, {childList: true, characterData: true, subtree: true});
+    });
+    obs.observe(pre, {childList: true, characterData: true, subtree: true});
+}());

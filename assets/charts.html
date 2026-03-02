@@ -51,6 +51,14 @@
         <i class="fas fa-code-compare" aria-hidden="true"></i>
         <span>Compare</span>
       </a>
+      <a href="#bets" class="nav-link" data-view="bets">
+        <i class="fas fa-dice" aria-hidden="true"></i>
+        <span>Bets</span>
+      </a>
+      <a href="#settings" class="nav-link" data-view="settings">
+        <i class="fas fa-sliders" aria-hidden="true"></i>
+        <span>Settings</span>
+      </a>
     </nav>
 
     <div class="header-right">
@@ -369,6 +377,273 @@
       </div>
 
     </div><!-- /view-compare -->
+
+    <!-- ═══════════════════════════════════════════════════
+         VIEW: BETS  —  Aggregated prediction results
+    ════════════════════════════════════════════════════ -->
+    <div class="view" id="view-bets" hidden>
+
+      <div class="view-header">
+        <h1 class="view-title">
+          <i class="fas fa-dice" aria-hidden="true"></i>
+          Bet History
+        </h1>
+        <span class="view-subtitle" id="bets-subtitle">All prediction results across all streamers</span>
+      </div>
+
+      <!-- Summary row -->
+      <div class="stats-grid bets-summary-grid" id="bets-summary-grid">
+        <div class="stat-card s-accent">
+          <div class="stat-inner">
+            <div class="stat-label">Total Bets</div>
+            <div class="stat-val" id="bets-total">--</div>
+          </div>
+          <i class="fas fa-list-ol stat-icon-bg"></i>
+        </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Wins</div>
+            <div class="stat-val is-positive" id="bets-wins">--</div>
+          </div>
+          <i class="fas fa-trophy stat-icon-bg"></i>
+        </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Losses</div>
+            <div class="stat-val is-negative" id="bets-losses">--</div>
+          </div>
+          <i class="fas fa-face-sad-tear stat-icon-bg"></i>
+        </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Win Rate</div>
+            <div class="stat-val" id="bets-winrate">--%</div>
+          </div>
+          <i class="fas fa-percent stat-icon-bg"></i>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="bets-filter-bar">
+        <select class="input bets-filter-select" id="bets-filter-streamer" aria-label="Filter by streamer">
+          <option value="">All streamers</option>
+        </select>
+        <select class="input bets-filter-select" id="bets-filter-result" aria-label="Filter by result">
+          <option value="">All results</option>
+          <option value="WIN">Wins only</option>
+          <option value="LOSE">Losses only</option>
+          <option value="PLACED">Placed (no result yet)</option>
+        </select>
+      </div>
+
+      <!-- Bets table -->
+      <div class="bets-table-wrap">
+        <table class="bets-table" id="bets-table" aria-label="Bet history table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Streamer</th>
+              <th>Event</th>
+              <th>Result</th>
+              <th>Points at Bet</th>
+            </tr>
+          </thead>
+          <tbody id="bets-tbody">
+            <tr><td colspan="5" class="bets-loading">
+              <i class="fas fa-spinner fa-spin"></i> Loading bets…
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div><!-- /view-bets -->
+
+
+    <!-- ═══════════════════════════════════════════════════
+         VIEW: SETTINGS  —  Global & per-streamer config
+    ════════════════════════════════════════════════════ -->
+    <div class="view" id="view-settings" hidden>
+
+      <div class="view-header">
+        <h1 class="view-title">
+          <i class="fas fa-sliders" aria-hidden="true"></i>
+          Settings
+        </h1>
+        <span class="view-subtitle">Changes are saved to config.json and hot-reloaded immediately. Streamer add/remove triggers a ~10s restart.</span>
+      </div>
+
+      <!-- Restart banner (hidden by default) -->
+      <div class="settings-restart-banner" id="settings-restart-banner" hidden>
+        <i class="fas fa-rotate"></i>
+        <span>Streamer list changed — miner restarting in ~10 seconds…</span>
+      </div>
+
+      <!-- Settings toast -->
+      <div class="settings-toast" id="settings-toast" hidden></div>
+
+      <!-- ── TABS ──────────────────────────────────────── -->
+      <div class="settings-tabs" role="tablist">
+        <button class="stab is-active" role="tab" data-stab="global" aria-selected="true">
+          <i class="fas fa-globe"></i> Global Defaults
+        </button>
+        <button class="stab" role="tab" data-stab="streamers" aria-selected="false">
+          <i class="fas fa-users"></i> Streamers
+        </button>
+      </div>
+
+      <!-- ── TAB: GLOBAL SETTINGS ─────────────────────── -->
+      <div class="stab-panel" id="stab-global">
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <h2><i class="fas fa-globe"></i> Global Defaults</h2>
+            <p class="settings-card-hint">These are the defaults applied to all streamers that don't have individual settings.</p>
+          </div>
+
+          <div class="settings-form" id="global-settings-form">
+            <!-- Toggles -->
+            <div class="settings-group">
+              <div class="settings-group-label">Features</div>
+              <div class="settings-toggles">
+                <label class="stg-toggle">
+                  <input type="checkbox" id="g-make_predictions">
+                  <span class="toggle-track"></span>
+                  <span class="stg-lbl">Make Predictions (Bets)</span>
+                </label>
+                <label class="stg-toggle">
+                  <input type="checkbox" id="g-follow_raid">
+                  <span class="toggle-track"></span>
+                  <span class="stg-lbl">Follow Raids (+250)</span>
+                </label>
+                <label class="stg-toggle">
+                  <input type="checkbox" id="g-claim_drops">
+                  <span class="toggle-track"></span>
+                  <span class="stg-lbl">Claim Drops</span>
+                </label>
+                <label class="stg-toggle">
+                  <input type="checkbox" id="g-claim_moments">
+                  <span class="toggle-track"></span>
+                  <span class="stg-lbl">Claim Moments</span>
+                </label>
+                <label class="stg-toggle">
+                  <input type="checkbox" id="g-watch_streak">
+                  <span class="toggle-track"></span>
+                  <span class="stg-lbl">Watch Streak</span>
+                </label>
+                <label class="stg-toggle">
+                  <input type="checkbox" id="g-community_goals">
+                  <span class="toggle-track"></span>
+                  <span class="stg-lbl">Community Goals</span>
+                </label>
+                <label class="stg-toggle">
+                  <input type="checkbox" id="g-stealth_mode">
+                  <span class="toggle-track"></span>
+                  <span class="stg-lbl">Bet Stealth Mode</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Bet settings -->
+            <div class="settings-group">
+              <div class="settings-group-label">Bet Settings</div>
+              <div class="settings-fields">
+                <div class="stg-field">
+                  <label class="stg-field-label" for="g-strategy">Strategy</label>
+                  <select class="input stg-select" id="g-strategy">
+                    <option value="SMART">SMART</option>
+                    <option value="MOST_VOTED">MOST_VOTED</option>
+                    <option value="HIGH_ODDS">HIGH_ODDS</option>
+                    <option value="PERCENTAGE">PERCENTAGE</option>
+                    <option value="SMART_MONEY">SMART_MONEY</option>
+                    <option value="NUMBER_1">NUMBER_1 (always Blue)</option>
+                    <option value="NUMBER_2">NUMBER_2 (always Pink)</option>
+                  </select>
+                </div>
+                <div class="stg-field">
+                  <label class="stg-field-label" for="g-percentage">Bet % of Points</label>
+                  <input class="input" type="number" id="g-percentage" min="1" max="100" placeholder="5">
+                </div>
+                <div class="stg-field">
+                  <label class="stg-field-label" for="g-percentage_gap">Percentage Gap (SMART)</label>
+                  <input class="input" type="number" id="g-percentage_gap" min="0" max="100" placeholder="20">
+                </div>
+                <div class="stg-field">
+                  <label class="stg-field-label" for="g-max_points">Max Points per Bet</label>
+                  <input class="input" type="number" id="g-max_points" min="0" placeholder="50000">
+                </div>
+                <div class="stg-field">
+                  <label class="stg-field-label" for="g-minimum_points">Min Points to Bet</label>
+                  <input class="input" type="number" id="g-minimum_points" min="0" placeholder="0">
+                </div>
+                <div class="stg-field">
+                  <label class="stg-field-label" for="g-delay_mode">Delay Mode</label>
+                  <select class="input stg-select" id="g-delay_mode">
+                    <option value="FROM_END">FROM_END</option>
+                    <option value="FROM_START">FROM_START</option>
+                    <option value="PERCENTAGE">PERCENTAGE</option>
+                  </select>
+                </div>
+                <div class="stg-field">
+                  <label class="stg-field-label" for="g-delay">Delay (seconds)</label>
+                  <input class="input" type="number" id="g-delay" min="0" placeholder="6">
+                </div>
+                <div class="stg-field">
+                  <label class="stg-field-label" for="g-chat">Chat Presence</label>
+                  <select class="input stg-select" id="g-chat">
+                    <option value="ONLINE">ONLINE</option>
+                    <option value="ALWAYS">ALWAYS</option>
+                    <option value="NEVER">NEVER</option>
+                    <option value="OFFLINE">OFFLINE</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-actions">
+              <button class="btn btn-primary" id="btn-save-global">
+                <i class="fas fa-floppy-disk"></i> Save Global Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      </div><!-- /stab-global -->
+
+      <!-- ── TAB: STREAMERS ────────────────────────────── -->
+      <div class="stab-panel" id="stab-streamers" hidden>
+
+        <!-- Add streamer form -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <h2><i class="fas fa-user-plus"></i> Add Streamer</h2>
+          </div>
+          <div class="add-streamer-form">
+            <input class="input" type="text" id="new-streamer-input"
+                   placeholder="streamer username…" autocomplete="off" spellcheck="false"
+                   aria-label="New streamer username">
+            <button class="btn btn-primary" id="btn-add-streamer">
+              <i class="fas fa-plus"></i> Add
+            </button>
+          </div>
+        </div>
+
+        <!-- Streamers list -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <h2><i class="fas fa-users"></i> Managed Streamers</h2>
+            <p class="settings-card-hint">
+              Enable/disable toggles and basic settings are saved immediately.
+              Removing or adding streamers triggers a ~10s auto-restart.
+            </p>
+          </div>
+          <div id="streamers-settings-list" class="streamers-settings-list">
+            <div class="settings-loading">
+              <i class="fas fa-spinner fa-spin"></i> Loading config…
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /stab-streamers -->
+
+    </div><!-- /view-settings -->
 
   </main>
 </div><!-- /app-shell -->

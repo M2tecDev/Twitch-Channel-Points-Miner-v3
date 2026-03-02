@@ -1,0 +1,68 @@
+{
+  "miner": {
+    "username": "your-twitch-username",
+    "password": null,
+    "claim_drops_startup": false,
+    "enable_analytics": true,
+    "disable_ssl_cert_verification": false,
+    "disable_at_in_nickname": false,
+    "priority": ["STREAK", "DROPS", "ORDER"]
+  },
+  "analytics": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "refresh": 5,
+    "days_ago": 7
+  },
+  "global_settings": {
+    "make_predictions": true,
+    "follow_raid": true,
+    "claim_drops": true,
+    "claim_moments": true,
+    "watch_streak": true,
+    "community_goals": false,
+    "chat": "ONLINE",
+    "bet": {
+      "strategy": "SMART",
+      "percentage": 5,
+      "percentage_gap": 20,
+      "max_points": 50000,
+      "stealth_mode": true,
+      "delay_mode": "FROM_END",
+      "delay": 6,
+      "minimum_points": 0,
+      "filter_condition": null
+    }
+  },
+  "streamers": [
+    {
+      "username": "streamer01",
+      "enabled": true,
+      "settings": null
+    },
+    {
+      "username": "streamer02",
+      "enabled": true,
+      "settings": {
+        "make_predictions": false,
+        "follow_raid": true,
+        "claim_drops": true,
+        "claim_moments": true,
+        "watch_streak": true,
+        "community_goals": false,
+        "chat": "ONLINE",
+        "bet": {
+          "strategy": "HIGH_ODDS",
+          "percentage": 5,
+          "percentage_gap": 20,
+          "max_points": 10000,
+          "stealth_mode": false,
+          "delay_mode": "FROM_END",
+          "delay": 6,
+          "minimum_points": 5000,
+          "filter_condition": null
+        }
+      }
+    }
+  ]
+}
