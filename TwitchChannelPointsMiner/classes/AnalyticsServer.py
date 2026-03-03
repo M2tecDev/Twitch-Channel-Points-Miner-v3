@@ -170,7 +170,7 @@ def read_json(streamer, return_response=True):
 
     filtered = filter_datas(start_date, end_date, data)
     if return_response:
-        return Response(json.dumps(filtered), status=200, mimetype="application/json")
+        return Response(json.dumps(filtered, default=int), status=200, mimetype="application/json")
     return filtered
 
 
