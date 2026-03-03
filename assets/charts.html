@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0a">
-  <title>Twitch Channel Points Miner v2</title>
+  <title>Twitch Channel Points Miner v3</title>
 
   <link rel="icon" type="image/png" sizes="32x32" href="https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png">
   <link rel="icon" type="image/png" sizes="16x16" href="https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png">
@@ -36,7 +36,7 @@
       <a href="#dashboard" class="header-logo-link" aria-label="Go to Dashboard">
         <div class="logo-mark" aria-hidden="true"><i class="fab fa-twitch"></i></div>
         <div class="logo-text">
-          <div class="logo-title">CPM <span>v2</span></div>
+          <div class="logo-title">CPM <span>v3</span></div>
           <div class="logo-sub">Analytics</div>
         </div>
       </a>
@@ -469,7 +469,7 @@
           <i class="fas fa-sliders" aria-hidden="true"></i>
           Settings
         </h1>
-        <span class="view-subtitle">Changes are saved to config.json and hot-reloaded immediately. Streamer add/remove triggers a ~10s restart.</span>
+        <span class="view-subtitle">Changes are saved to config.json and hot-reloaded immediately.</span>
       </div>
 
       <!-- Restart banner (hidden by default) -->
@@ -489,6 +489,9 @@
         <button class="stab" role="tab" data-stab="streamers" aria-selected="false">
           <i class="fas fa-users"></i> Streamers
         </button>
+        <button class="stab" role="tab" data-stab="notifications" aria-selected="false">
+          <i class="fas fa-bell"></i> Notifications
+        </button>
       </div>
 
       <!-- ── TAB: GLOBAL SETTINGS ─────────────────────── -->
@@ -500,45 +503,67 @@
           </div>
 
           <div class="settings-form" id="global-settings-form">
-            <!-- Toggles -->
+            <!-- Feature toggles — FIX: use .toggle-switch so CSS animations work -->
             <div class="settings-group">
               <div class="settings-group-label">Features</div>
               <div class="settings-toggles">
-                <label class="stg-toggle">
+
+                <label class="toggle-switch">
                   <input type="checkbox" id="g-make_predictions">
                   <span class="toggle-track"></span>
-                  <span class="stg-lbl">Make Predictions (Bets)</span>
+                  <span class="toggle-label">Make Predictions (Bets)
+                    <span class="tip" data-tip="Choose if you want to make predictions / bet or not">?</span>
+                  </span>
                 </label>
-                <label class="stg-toggle">
+
+                <label class="toggle-switch">
                   <input type="checkbox" id="g-follow_raid">
                   <span class="toggle-track"></span>
-                  <span class="stg-lbl">Follow Raids (+250)</span>
+                  <span class="toggle-label">Follow Raids (+250)
+                    <span class="tip" data-tip="Follow raid to obtain +250 bonus points">?</span>
+                  </span>
                 </label>
-                <label class="stg-toggle">
+
+                <label class="toggle-switch">
                   <input type="checkbox" id="g-claim_drops">
                   <span class="toggle-track"></span>
-                  <span class="stg-lbl">Claim Drops</span>
+                  <span class="toggle-label">Claim Drops
+                    <span class="tip" data-tip="Increases watch-time for the current game so drops can be claimed. Set False to never obtain drop rewards from this script.">?</span>
+                  </span>
                 </label>
-                <label class="stg-toggle">
+
+                <label class="toggle-switch">
                   <input type="checkbox" id="g-claim_moments">
                   <span class="toggle-track"></span>
-                  <span class="stg-lbl">Claim Moments</span>
+                  <span class="toggle-label">Claim Moments
+                    <span class="tip" data-tip="If True, Twitch Moments will be claimed automatically when available">?</span>
+                  </span>
                 </label>
-                <label class="stg-toggle">
+
+                <label class="toggle-switch">
                   <input type="checkbox" id="g-watch_streak">
                   <span class="toggle-track"></span>
-                  <span class="stg-lbl">Watch Streak</span>
+                  <span class="toggle-label">Watch Streak
+                    <span class="tip" data-tip="When a streamer goes online, change their priority to catch the watch streak bonus">?</span>
+                  </span>
                 </label>
-                <label class="stg-toggle">
+
+                <label class="toggle-switch">
                   <input type="checkbox" id="g-community_goals">
                   <span class="toggle-track"></span>
-                  <span class="stg-lbl">Community Goals</span>
+                  <span class="toggle-label">Community Goals
+                    <span class="tip" data-tip="Contribute to community channel point goals automatically">?</span>
+                  </span>
                 </label>
-                <label class="stg-toggle">
+
+                <label class="toggle-switch">
                   <input type="checkbox" id="g-stealth_mode">
                   <span class="toggle-track"></span>
-                  <span class="stg-lbl">Bet Stealth Mode</span>
+                  <span class="toggle-label">Bet Stealth Mode
+                    <span class="tip" data-tip="If True, the bot will always bet the minimum amount to avoid detection by other users or streamers">?</span>
+                  </span>
                 </label>
+
               </div>
             </div>
 
@@ -547,47 +572,62 @@
               <div class="settings-group-label">Bet Settings</div>
               <div class="settings-fields">
                 <div class="stg-field">
-                  <label class="stg-field-label" for="g-strategy">Strategy</label>
+                  <label class="stg-field-label" for="g-strategy">Strategy
+                    <span class="tip" data-tip="SMART: bets based on prediction window and odds. MOST_VOTED: follows crowd. HIGH_ODDS: bets on the underdog. PERCENTAGE: bets a fixed % always. SMART_MONEY: follows large individual bettors.">?</span>
+                  </label>
                   <select class="input stg-select" id="g-strategy">
                     <option value="SMART">SMART</option>
                     <option value="MOST_VOTED">MOST_VOTED</option>
                     <option value="HIGH_ODDS">HIGH_ODDS</option>
                     <option value="PERCENTAGE">PERCENTAGE</option>
                     <option value="SMART_MONEY">SMART_MONEY</option>
-                    <option value="NUMBER_1">NUMBER_1 (always Blue)</option>
-                    <option value="NUMBER_2">NUMBER_2 (always Pink)</option>
+                    <option value="NUMBER_1">NUMBER_1</option>
+                    <option value="NUMBER_2">NUMBER_2</option>
                   </select>
                 </div>
                 <div class="stg-field">
-                  <label class="stg-field-label" for="g-percentage">Bet % of Points</label>
+                  <label class="stg-field-label" for="g-percentage">Bet %
+                    <span class="tip" data-tip="Percentage of current points to bet (e.g. 5 = bet 5% of your points)">?</span>
+                  </label>
                   <input class="input" type="number" id="g-percentage" min="1" max="100" placeholder="5">
                 </div>
                 <div class="stg-field">
-                  <label class="stg-field-label" for="g-percentage_gap">Percentage Gap (SMART)</label>
-                  <input class="input" type="number" id="g-percentage_gap" min="0" max="100" placeholder="20">
+                  <label class="stg-field-label" for="g-percentage_gap">% Gap
+                    <span class="tip" data-tip="Minimum percentage difference between outcomes required before placing a bet (e.g. 20 = only bet when one outcome has 20%+ edge)">?</span>
+                  </label>
+                  <input class="input" type="number" id="g-percentage_gap" min="0" placeholder="20">
                 </div>
                 <div class="stg-field">
-                  <label class="stg-field-label" for="g-max_points">Max Points per Bet</label>
+                  <label class="stg-field-label" for="g-max_points">Max Points
+                    <span class="tip" data-tip="Maximum number of points to bet in a single prediction, regardless of percentage">?</span>
+                  </label>
                   <input class="input" type="number" id="g-max_points" min="0" placeholder="50000">
                 </div>
                 <div class="stg-field">
-                  <label class="stg-field-label" for="g-minimum_points">Min Points to Bet</label>
+                  <label class="stg-field-label" for="g-minimum_points">Min to Bet
+                    <span class="tip" data-tip="Only place a bet if your current points are above this minimum threshold">?</span>
+                  </label>
                   <input class="input" type="number" id="g-minimum_points" min="0" placeholder="0">
                 </div>
                 <div class="stg-field">
-                  <label class="stg-field-label" for="g-delay_mode">Delay Mode</label>
+                  <label class="stg-field-label" for="g-delay_mode">Delay Mode
+                    <span class="tip" data-tip="FROM_START: wait X seconds after prediction opens. FROM_END: bet X seconds before prediction closes (recommended — more data available).">?</span>
+                  </label>
                   <select class="input stg-select" id="g-delay_mode">
                     <option value="FROM_END">FROM_END</option>
                     <option value="FROM_START">FROM_START</option>
-                    <option value="PERCENTAGE">PERCENTAGE</option>
                   </select>
                 </div>
                 <div class="stg-field">
-                  <label class="stg-field-label" for="g-delay">Delay (seconds)</label>
+                  <label class="stg-field-label" for="g-delay">Delay (s)
+                    <span class="tip" data-tip="Seconds to wait (from start or before end) before placing the bet">?</span>
+                  </label>
                   <input class="input" type="number" id="g-delay" min="0" placeholder="6">
                 </div>
                 <div class="stg-field">
-                  <label class="stg-field-label" for="g-chat">Chat Presence</label>
+                  <label class="stg-field-label" for="g-chat">Chat Presence
+                    <span class="tip" data-tip="ONLINE: join chat only when stream is live. ALWAYS: always in chat. NEVER: never join chat. OFFLINE: join only when offline.">?</span>
+                  </label>
                   <select class="input stg-select" id="g-chat">
                     <option value="ONLINE">ONLINE</option>
                     <option value="ALWAYS">ALWAYS</option>
@@ -643,8 +683,15 @@
 
       </div><!-- /stab-streamers -->
 
-    </div><!-- /view-settings -->
+      <!-- ── TAB: NOTIFICATIONS ─────────────────────────── -->
+      <div class="stab-panel" id="stab-notifications" hidden>
+        <!-- JS renders all notification service cards here -->
+        <div id="notifications-list">
+          <div class="settings-loading"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
+        </div>
+      </div><!-- /stab-notifications -->
 
+    </div><!-- /view-settings -->
   </main>
 </div><!-- /app-shell -->
 
@@ -673,7 +720,7 @@
   </label>
   <span class="footer-info">
     <i class="fas fa-circle footer-live" aria-hidden="true"></i>
-    CPM v2 &middot; <span id="footer-refresh-info">Auto-refresh active</span>
+    CPM v3 &middot; <span id="footer-refresh-info">Auto-refresh active</span>
   </span>
 </div>
 

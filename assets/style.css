@@ -1,5 +1,5 @@
 /* ============================================================
-   Twitch CPM v2 — style.css
+   Twitch CPM v3 — style.css
    Three colour themes: gold (default) · red · purple
    Layout: sticky header + collapsible sidebar + main
    ============================================================ */
@@ -834,16 +834,16 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   .streamer-hero { gap: 8px; }
   .streamer-hero-actions { width: 100%; }
 }
-/* ── Safari overflow scrolling ────────────────────────────── */
+/* ── Safari overflow scrolling ─────────────────────────────── */
 .app-sidebar, .app-main, .annotation-timeline, .bets-table-wrap {
   -webkit-overflow-scrolling: touch;
 }
 .app-sidebar::-webkit-scrollbar { display: none; }
 .app-sidebar { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* ─────────────────────────────────────────────────────────────
-   [1] Hide sidebar in Settings view
-───────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════
+   [1] SIDEBAR HIDDEN IN SETTINGS VIEW
+══════════════════════════════════════════════ */
 .app-shell[data-current-view="settings"] .app-sidebar {
   display: none !important;
 }
@@ -854,175 +854,119 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   width: 100%;
 }
 
-/* ─────────────────────────────────────────────────────────────
-   [2] FIX: .stg-toggle — hide the checkbox, show only the track
-   The main style.css already styles .toggle-switch input {display:none}
-   For settings cards we now use .toggle-switch everywhere, so this
-   section just ensures any legacy .stg-toggle also hides its input.
-───────────────────────────────────────────────────────────── */
-.stg-toggle input { display: none; }
+/* ══════════════════════════════════════════════
+   [2] LEGACY .stg-toggle: hide checkbox so track
+       animates like .toggle-switch everywhere else
+══════════════════════════════════════════════ */
+.stg-toggle input[type="checkbox"] { display: none; }
 
-/* ─────────────────────────────────────────────────────────────
-   [3] Status dots — no dot if element not injected
-───────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════
+   [3] STATUS DOTS
+══════════════════════════════════════════════ */
 .status-dot {
   display: inline-block;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  margin-right: 6px;
-  vertical-align: middle;
-  transition: background 0.2s;
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0; margin-right: 6px;
+  vertical-align: middle; transition: background 0.2s;
 }
 .status-dot.online  { background: #36b535; box-shadow: 0 0 5px #36b53566; }
 .status-dot.offline { background: #555; }
 
-/* ─────────────────────────────────────────────────────────────
-   [4] Settings lock screen
-───────────────────────────────────────────────────────────── */
-.settings-lock-overlay {
+/* ══════════════════════════════════════════════
+   [TOOLTIP] ? badges with hover tooltip
+══════════════════════════════════════════════ */
+.tip {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  font-size: 10px; font-weight: 700;
+  background: var(--accent-dim);
+  color: var(--accent-b);
+  border: 1px solid var(--accent-bdr);
+  cursor: help;
+  margin-left: 5px;
+  position: relative;
+  vertical-align: middle;
+  flex-shrink: 0;
+  transition: background var(--t);
+}
+.tip:hover { background: var(--accent); color: #000; }
+
+/* Tooltip popup */
+.tip::after {
+  content: attr(data-tip);
   position: absolute;
-  inset: 0;
-  z-index: 100;
+  left: 50%; bottom: calc(100% + 7px);
+  transform: translateX(-50%);
+  width: 240px;
+  background: var(--bg-3);
+  color: var(--text);
+  font-size: 11px; font-weight: 400;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--accent-bdr);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 9000;
+  /* keep above everything */
+}
+.tip::before {
+  content: '';
+  position: absolute;
+  left: 50%; bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--accent-bdr);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 9001;
+}
+.tip:hover::after,
+.tip:hover::before { opacity: 1; }
+
+/* Flip tooltip if near top of screen */
+.tip.tip-down::after  { bottom: auto; top: calc(100% + 7px); }
+.tip.tip-down::before { bottom: auto; top: calc(100% + 2px); border-top-color: transparent; border-bottom-color: var(--accent-bdr); }
+
+/* Allow toggle labels to wrap when they contain a .tip */
+.toggle-label { white-space: normal !important; display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+
+/* ══════════════════════════════════════════════
+   [4] SETTINGS PASSWORD LOCK SCREEN
+══════════════════════════════════════════════ */
+#view-settings { position: relative; }
+
+.settings-lock-overlay {
+  position: absolute; inset: 0; z-index: 100;
   background: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   padding: 40px 16px;
 }
 .settings-lock-box {
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 40px 32px;
-  max-width: 360px;
-  width: 100%;
-  text-align: center;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 40px 32px;
+  max-width: 360px; width: 100%; text-align: center;
   box-shadow: 0 8px 40px rgba(0,0,0,0.5);
 }
-.settings-lock-icon {
-  font-size: 40px;
-  color: var(--accent);
-  margin-bottom: 16px;
-  display: block;
-}
+.settings-lock-icon { font-size: 40px; color: var(--accent); margin-bottom: 16px; display: block; }
 .settings-lock-title {
-  font-family: var(--font-display);
-  font-size: 22px;
-  letter-spacing: 2px;
-  color: var(--text);
-  margin: 0 0 6px;
+  font-family: var(--font-display); font-size: 22px; letter-spacing: 2px;
+  color: var(--text); margin: 0 0 6px;
 }
-.settings-lock-hint {
-  font-size: 12px;
-  color: var(--text-dim);
-  margin: 0 0 20px;
-}
-.settings-lock-input {
-  width: 100%;
-  margin-bottom: 12px;
-  text-align: center;
-  font-size: 15px;
-  letter-spacing: 0.15em;
-}
-.settings-lock-btn {
-  width: 100%;
-  justify-content: center;
-  padding: 9px 16px;
-  font-size: 13px;
-}
-.settings-lock-error {
-  margin-top: 10px;
-  font-size: 12px;
-  color: #ff4545;
-  animation: fadeDown 200ms ease;
-}
+.settings-lock-hint { font-size: 12px; color: var(--text-dim); margin: 0 0 20px; }
+.settings-lock-input { width: 100%; margin-bottom: 12px; text-align: center; font-size: 15px; letter-spacing: 0.15em; }
+.settings-lock-btn   { width: 100%; justify-content: center; padding: 9px 16px; font-size: 13px; }
+.settings-lock-error { margin-top: 10px; font-size: 12px; color: #ff4545; animation: fadeDown 200ms ease; }
 
-/* view-settings needs position:relative for the overlay */
-#view-settings {
-  position: relative;
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Gear button in streamer hero
-───────────────────────────────────────────────────────────── */
-#btn-streamer-settings { margin-right: 8px; flex-shrink: 0; }
-
-/* Highlight animation for streamer card in settings */
-.streamer-setting-card.is-highlighted {
-  border-color: var(--accent-b) !important;
-  box-shadow: 0 0 0 2px var(--accent), 0 4px 20px rgba(0,0,0,0.4);
-  animation: highlightPulse 2.5s ease-out forwards;
-}
-@keyframes highlightPulse {
-  0%   { box-shadow: 0 0 0 4px var(--accent); }
-  100% { box-shadow: none; }
-}
-
-/* ─────────────────────────────────────────────────────────────
-   BETS VIEW
-───────────────────────────────────────────────────────────── */
-.bets-filter-bar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
-.bets-filter-select {
-  min-width: 180px;
-  background: var(--bg-2); border: 1px solid var(--border);
-  border-radius: var(--r-sm); padding: 6px 10px;
-  color: var(--text); font-size: 13px; -webkit-appearance: none; appearance: none;
-}
-.bets-table-wrap {
-  background: var(--bg-2); border: 1px solid var(--border);
-  border-radius: var(--r-lg); overflow: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.bets-table {
-  width: 100%; border-collapse: collapse; font-size: 13px; min-width: 500px;
-}
-.bets-table th {
-  text-align: left; padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-dim); font-size: 11px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.08em;
-  background: var(--bg-3); white-space: nowrap;
-}
-.bets-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; max-width: 280px; }
-.bets-table tr:last-child td { border-bottom: none; }
-.bets-table tr:hover td { background: rgba(255,255,255,0.02); }
-.bets-ts       { color: var(--text-dim); font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
-.bets-streamer a { color: var(--accent-b); }
-.bets-streamer a:hover { text-decoration: underline; }
-.bets-title    { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bets-pts      { font-family: var(--font-mono); color: var(--text-muted); text-align: right; }
-.bets-loading  { text-align: center; padding: 32px; color: var(--text-dim); }
-.bets-loading.is-error { color: #ff4545; }
-
-.bet-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; font-weight: 700;
-  padding: 3px 9px; border-radius: 20px;
-  text-transform: uppercase; letter-spacing: 0.06em;
-}
-.bet-win    { background: rgba(54,181,53,0.15);  color: #36b535; }
-.bet-lose   { background: rgba(255,69,69,0.15);  color: #ff4545; }
-.bet-placed { background: rgba(255,224,69,0.12); color: #ffe045; }
-.stat-val.is-positive { color: #36b535; }
-.stat-val.is-negative { color: #ff4545; }
-
-/* ─────────────────────────────────────────────────────────────
-   TIMELINE badges
-───────────────────────────────────────────────────────────── */
-.timeline-badge {
-  display: inline-block; font-size: 10px; font-weight: 700;
-  padding: 2px 7px; border-radius: 20px;
-  background: rgba(255,255,255,0.06); color: var(--text-dim); margin-top: 3px;
-}
-.timeline-item.tl-win    .timeline-dot { background: #36b535 !important; }
-.timeline-item.tl-lose   .timeline-dot { background: #ff4545 !important; }
-.timeline-item.tl-bet    .timeline-dot { background: #ffe045 !important; }
-.timeline-item.tl-streak .timeline-dot { background: #45c1ff !important; }
-
-/* ─────────────────────────────────────────────────────────────
-   SETTINGS VIEW
-───────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════
+   SETTINGS SHARED CHROME
+══════════════════════════════════════════════ */
 .settings-restart-banner {
   display: flex; align-items: center; gap: 10px;
   background: rgba(255,224,69,0.1); border: 1px solid rgba(255,224,69,0.3);
@@ -1039,6 +983,7 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
 .settings-toast.is-ok    { border-color: #36b535; color: #36b535; }
 .settings-toast.is-error { border-color: #ff4545; color: #ff4545; }
 
+/* Tabs */
 .settings-tabs {
   display: flex; flex-wrap: wrap; margin-bottom: 20px;
   border-bottom: 1px solid var(--border); gap: 4px;
@@ -1051,10 +996,10 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   display: flex; align-items: center; gap: 7px;
   transition: color 0.2s, border-color 0.2s;
 }
-.stab i { margin-right: 0; }
-.stab:hover     { color: var(--text); }
+.stab:hover { color: var(--text); }
 .stab.is-active { color: var(--accent-b); border-bottom-color: var(--accent-b); }
 
+/* Cards */
 .settings-card {
   background: var(--bg-2); border: 1px solid var(--border);
   border-radius: var(--r-lg); margin-bottom: 16px; overflow: hidden;
@@ -1067,24 +1012,18 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
 .settings-card-header h2 i { color: var(--accent-b); }
 .settings-card-hint { font-size: 12px; color: var(--text-dim); margin: 0; }
 
-.settings-form { padding: 14px 18px; }
-.settings-group { margin-bottom: 22px; }
+.settings-form   { padding: 14px 18px; }
+.settings-group  { margin-bottom: 22px; }
 .settings-group-label {
   font-size: 11px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.1em; color: var(--text-dim); margin-bottom: 12px;
 }
 
-/* Toggle grid in settings — 2 columns */
-.settings-toggles {
-  display: flex; flex-wrap: wrap; gap: 10px;
-}
-.settings-toggles .toggle-switch {
-  flex: 1 1 200px; min-width: 180px;
-}
+/* Toggle grid — 2 wide columns */
+.settings-toggles { display: flex; flex-wrap: wrap; gap: 10px; }
+.settings-toggles .toggle-switch { flex: 1 1 240px; min-width: 200px; }
 
-.settings-fields {
-  display: flex; flex-wrap: wrap; gap: 12px;
-}
+.settings-fields { display: flex; flex-wrap: wrap; gap: 12px; }
 .settings-fields > * { flex: 1 1 180px; min-width: 160px; }
 .settings-fields.compact > * { flex: 1 1 150px; min-width: 140px; }
 
@@ -1092,6 +1031,7 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
 .stg-field-label {
   font-size: 11px; font-weight: 600; color: var(--text-dim);
   text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
 }
 .stg-select {
   background: var(--bg-3); border: 1px solid var(--border);
@@ -1111,14 +1051,12 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
 .btn-danger { background: rgba(255,69,69,0.15); color: #ff4545; border: 1px solid rgba(255,69,69,0.3); }
 .btn-danger:hover { background: rgba(255,69,69,0.25); }
 
-.add-streamer-form {
-  padding: 14px 18px; display: flex; align-items: center; gap: 10px;
-}
+/* Add streamer form */
+.add-streamer-form { padding: 14px 18px; display: flex; align-items: center; gap: 10px; }
 .add-streamer-form .input { flex: 1; max-width: 320px; }
 
-.streamers-settings-list {
-  padding: 12px 18px; display: flex; flex-direction: column; gap: 14px;
-}
+/* Streamer list */
+.streamers-settings-list { padding: 12px 18px; display: flex; flex-direction: column; gap: 14px; }
 .settings-loading { text-align: center; padding: 20px; color: var(--text-dim); }
 
 .streamer-setting-card {
@@ -1126,15 +1064,14 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   overflow: hidden; transition: border-color 0.2s;
 }
 .stc-header {
-  display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: 8px;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
   padding: 10px 14px; background: var(--bg-3); border-bottom: 1px solid var(--border);
 }
-.stc-title  { display: flex; align-items: center; gap: 8px; }
-.stc-name   { font-size: 14px; font-weight: 700; color: var(--text); }
+.stc-title   { display: flex; align-items: center; gap: 8px; }
+.stc-name    { font-size: 14px; font-weight: 700; color: var(--text); }
 .stc-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-.stc-body   { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.stc-body    { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
 .stc-individual { display: flex; flex-direction: column; gap: 12px; }
 .stc-individual.is-hidden { display: none; }
 .stc-save-row {
@@ -1142,9 +1079,131 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   padding-top: 8px; border-top: 1px solid var(--border);
 }
 
-/* ─────────────────────────────────────────────────────────────
-   [6] Log — level filter dropdown
-───────────────────────────────────────────────────────────── */
+/* Gear button in streamer hero */
+#btn-streamer-settings { margin-right: 8px; flex-shrink: 0; }
+
+/* Highlight animation for streamer card (from gear click) */
+.streamer-setting-card.is-highlighted {
+  border-color: var(--accent-b) !important;
+  box-shadow: 0 0 0 2px var(--accent), 0 4px 20px rgba(0,0,0,0.4);
+  animation: highlightPulse 2.5s ease-out forwards;
+}
+@keyframes highlightPulse {
+  0%   { box-shadow: 0 0 0 4px var(--accent); }
+  100% { box-shadow: none; }
+}
+
+/* ══════════════════════════════════════════════
+   BETS VIEW
+══════════════════════════════════════════════ */
+.bets-filter-bar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.bets-filter-select {
+  min-width: 180px; background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 6px 10px; color: var(--text);
+  font-size: 13px; -webkit-appearance: none; appearance: none;
+}
+.bets-table-wrap {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--r-lg); overflow: auto; -webkit-overflow-scrolling: touch;
+}
+.bets-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 500px; }
+.bets-table th {
+  text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border);
+  color: var(--text-dim); font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  background: var(--bg-3); white-space: nowrap;
+}
+.bets-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; max-width: 280px; }
+.bets-table tr:last-child td { border-bottom: none; }
+.bets-table tr:hover td { background: rgba(255,255,255,0.02); }
+.bets-ts       { color: var(--text-dim); font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+.bets-streamer a { color: var(--accent-b); }
+.bets-streamer a:hover { text-decoration: underline; }
+.bets-title    { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bets-pts      { font-family: var(--font-mono); color: var(--text-muted); text-align: right; }
+.bets-loading  { text-align: center; padding: 32px; color: var(--text-dim); }
+.bets-loading.is-error { color: #ff4545; }
+
+.bet-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.bet-win    { background: rgba(54,181,53,0.15);  color: #36b535; }
+.bet-lose   { background: rgba(255,69,69,0.15);  color: #ff4545; }
+.bet-placed { background: rgba(255,224,69,0.12); color: #ffe045; }
+.stat-val.is-positive { color: #36b535; }
+.stat-val.is-negative { color: #ff4545; }
+
+/* ══════════════════════════════════════════════
+   TIMELINE BADGES
+══════════════════════════════════════════════ */
+.timeline-badge {
+  display: inline-block; font-size: 10px; font-weight: 700;
+  padding: 2px 7px; border-radius: 20px;
+  background: rgba(255,255,255,0.06); color: var(--text-dim); margin-top: 3px;
+}
+.timeline-item.tl-win    .timeline-dot { background: #36b535 !important; }
+.timeline-item.tl-lose   .timeline-dot { background: #ff4545 !important; }
+.timeline-item.tl-bet    .timeline-dot { background: #ffe045 !important; }
+.timeline-item.tl-streak .timeline-dot { background: #45c1ff !important; }
+
+/* ══════════════════════════════════════════════
+   NOTIFICATIONS TAB
+══════════════════════════════════════════════ */
+.notif-card { }  /* inherits .settings-card */
+
+.notif-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px;
+}
+.notif-card-title {
+  display: flex; align-items: center; gap: 10px;
+}
+.notif-icon {
+  font-size: 20px; color: var(--accent-b); width: 24px; text-align: center;
+}
+/* Service brand colours */
+.fa-telegram  { color: #229ED9 !important; }
+.fa-discord   { color: #5865F2 !important; }
+
+.notif-card-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 16px; }
+.notif-card-body.is-hidden { display: none; }
+
+.notif-hint { font-size: 12px; color: var(--text-dim); margin: 0; line-height: 1.5; }
+
+/* Notification input — wider than default */
+.notif-field .input,
+.notif-field .notif-input {
+  width: 100%;
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+.notif-select { width: 100%; font-size: 12px; font-family: var(--font-ui); }
+
+/* Events grid — compact checkbox grid */
+.events-grid {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 6px;
+}
+.event-check {
+  flex: 0 0 auto;
+}
+.event-label {
+  font-size: 10px !important;
+  font-family: var(--font-mono) !important;
+  letter-spacing: 0.02em;
+  white-space: nowrap !important;
+}
+
+.notif-save-row {
+  display: flex; justify-content: flex-end;
+  padding-top: 10px; border-top: 1px solid var(--border);
+}
+
+/* ══════════════════════════════════════════════
+   LOG LEVEL FILTER DROPDOWN
+══════════════════════════════════════════════ */
 .log-level-filter {
   background: var(--bg-2); border: 1px solid var(--border);
   border-radius: var(--r-sm); padding: 3px 8px;
@@ -1152,16 +1211,21 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   margin-left: auto; -webkit-appearance: none; appearance: none;
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* ══════════════════════════════════════════════
    RESPONSIVE
-───────────────────────────────────────────────────────────── */
+══════════════════════════════════════════════ */
 @media (max-width: 900px) {
   .app-shell[data-current-view="settings"] .app-main { max-width: 100%; padding: 0 8px; }
+  .tip::after { width: 200px; }
 }
 @media (max-width: 700px) {
-  .bets-filter-bar { flex-direction: column; }
+  .bets-filter-bar  { flex-direction: column; }
   .settings-toggles .toggle-switch { flex: 1 1 100%; }
-  .stc-header { flex-direction: column; align-items: flex-start; }
-  .settings-toast { right: 8px; left: 8px; }
+  .stc-header       { flex-direction: column; align-items: flex-start; }
+  .settings-toast   { right: 8px; left: 8px; }
   .settings-lock-box { padding: 28px 20px; }
+  .events-grid .event-check { flex: 0 0 45%; }
+  /* flip tooltip near bottom of viewport */
+  .tip::after  { left: auto; right: 0; transform: none; bottom: calc(100% + 7px); }
+  .tip::before { left: auto; right: 6px; transform: none; }
 }

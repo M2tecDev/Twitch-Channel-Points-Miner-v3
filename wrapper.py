@@ -52,7 +52,7 @@ def start_miner() -> subprocess.Popen:
 
 # ── Boot ─────────────────────────────────────────────────────
 print("╔══════════════════════════════════════╗", flush=True)
-print("║  CPM v2  —  wrapper.py  started      ║", flush=True)
+print("║  CPM 3   —  wrapper.py  started      ║", flush=True)
 print("╚══════════════════════════════════════╝", flush=True)
 
 if not os.path.exists(CONFIG_PATH):

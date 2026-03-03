@@ -1,5 +1,5 @@
 // ============================================================
-//  Twitch CPM v2 — script.js   (full rewrite)
+//  Twitch CPM v3 — script.js   (full rewrite)
 //
 //  Architecture:
 //  ─ Hash-based SPA router  (#dashboard · #streamer/name · #compare)
@@ -732,7 +732,7 @@ async function renderStreamer(name) {
 
     const label = name.replace('.json', '');
     setText('streamer-name-heading', label);
-    document.title = `${label} — CPM v2`;
+    document.title = `${label} — CPM v3`;
     announce(`Loaded streamer: ${label}`);
 
     // Set dates if not set
@@ -923,7 +923,7 @@ function renderAnnotationTimeline(annotations) {
 
 async function renderCompare() {
     showView('view-compare');
-    document.title = 'Compare — CPM v2';
+    document.title = 'Compare — CPM v3';
 
     const names  = [...state.compareSet];
     const empty  = document.getElementById('compare-empty');
@@ -1380,12 +1380,6 @@ if (typeof weeklyAgg === 'function') {
 
 /* ─── Cache cap (max 30 entries) ─────────────────────────────────────────── */
 var _CACHE_MAX = 30;
-function _cacheSet(name, value) {
-    state.seriesCache.set(name, value);
-    if (state.seriesCache.size > _CACHE_MAX) {
-        state.seriesCache.delete(state.seriesCache.keys().next().value);
-    }
-}
 
 /* ─── preloadStreakData: run once, update events count after ─────────────── */
 state.preloadDone = false;
@@ -1406,7 +1400,7 @@ if (typeof preloadStreakData === 'function') {
     };
 }
 
-/* ─── Improved renderAnnotationTimeline ─────────────────────────────────── */
+/* ─── renderAnnotationTimeline ───────────────────────────────────────────── */
 if (typeof renderAnnotationTimeline === 'function') {
     renderAnnotationTimeline = function(annotations) {
         var tl = document.getElementById('annotation-timeline');
@@ -1424,8 +1418,8 @@ if (typeof renderAnnotationTimeline === 'function') {
             tl.innerHTML = '<div class="timeline-empty"><i class="fas fa-calendar-xmark"></i><span>No events in selected range</span></div>';
             return;
         }
-        var sorted = valid.slice().sort(function(a, b) { return (b.x || 0) - (a.x || 0); });
-        var frag   = document.createDocumentFragment();
+        var sorted = valid.slice().sort(function(a, b) { return (b.x||0) - (a.x||0); });
+        var frag = document.createDocumentFragment();
         sorted.forEach(function(a) {
             var meta = COLOR_META[a.borderColor] || {icon: '⚡', label: 'EVENT', cls: ''};
             var item = document.createElement('div');
@@ -1456,7 +1450,7 @@ if (typeof renderAnnotationTimeline === 'function') {
     };
 }
 
-/* ─── [1+3] parseRoute / showView / router overrides ────────────────────── */
+/* ─── parseRoute / showView / router overrides ───────────────────────────── */
 var _pRouteOrig = parseRoute;
 parseRoute = function() {
     var h = location.hash || '#dashboard';
@@ -1491,50 +1485,35 @@ router = async function() {
 
     clearTimeout(refreshTimer);
 
-    /* [5] Set page title per view */
-    var TITLES = {dashboard: 'Overview', streamer: '', compare: 'Compare', bets: 'Bet History', settings: 'Settings'};
-
     switch (route.view) {
         case 'dashboard':
-            document.title = 'Overview — CPM v2';
-            await renderDashboard();
-            break;
+            document.title = 'Overview — CPM v3';
+            await renderDashboard(); break;
         case 'streamer':
-            await renderStreamer(route.param);
-            break;
+            await renderStreamer(route.param); break;
         case 'compare':
-            document.title = 'Compare — CPM v2';
-            await renderCompare();
-            break;
+            document.title = 'Compare — CPM v3';
+            await renderCompare(); break;
         case 'bets':
-            document.title = 'Bet History — CPM v2';
-            await renderBets();
-            break;
+            document.title = 'Bet History — CPM v3';
+            await renderBets(); break;
         case 'settings':
-            document.title = 'Settings — CPM v2';
-            await renderSettings();
-            break;
+            document.title = 'Settings — CPM v3';
+            await renderSettings(); break;
     }
 };
 
-/* ─── [3] Status polling — no false-green dots ───────────────────────────── */
-// /status now returns {} when no live miner is running (fixed in AnalyticsServer.py)
-// so the sidebar never adds dots when there's no real data.
+/* ─── Status polling (no false-green dots) ───────────────────────────────── */
 state.statusMap = {};
-
 async function fetchStatus() {
     try {
         var r = await fetch('./status');
-        if (r.ok) {
-            state.statusMap = await r.json();
-            renderSidebar();
-        }
+        if (r.ok) { state.statusMap = await r.json(); renderSidebar(); }
     } catch(e) {}
 }
 setInterval(fetchStatus, 30000);
 fetchStatus();
 
-/* ─── [3] Sidebar dot injection (only when data exists) ─────────────────── */
 var _sbOrig = renderSidebar;
 renderSidebar = function() {
     _sbOrig();
@@ -1544,8 +1523,7 @@ renderSidebar = function() {
         var name  = li.dataset.name;
         var clean = name ? name.replace('.json', '') : '';
         var info  = state.statusMap[clean] || state.statusMap[name];
-        // [3] Only add dot if the server actually reported this streamer
-        if (!info) return;
+        if (!info) return;  // no dot if server didn't report this streamer
         var old = li.querySelector('.status-dot');
         if (old) old.parentNode.removeChild(old);
         var dot = document.createElement('span');
@@ -1572,17 +1550,16 @@ if (typeof renderStreamer === 'function') {
     var _rsOrig = renderStreamer;
     renderStreamer = async function(name) {
         await _rsOrig(name);
-        /* [5] Title already set inside original renderStreamer, keep it */
         var old = document.getElementById('btn-streamer-settings');
         if (old && old.parentNode) old.parentNode.removeChild(old);
         var actions = document.querySelector('.streamer-hero-actions');
         if (!actions || !name) return;
         var btn = document.createElement('button');
-        btn.id        = 'btn-streamer-settings';
+        btn.id = 'btn-streamer-settings';
         btn.className = 'btn btn-sm';
-        btn.title     = 'Settings for this streamer';
+        btn.title = 'Settings for this streamer';
         btn.innerHTML = '<i class="fas fa-sliders"></i>';
-        btn.onclick   = function() {
+        btn.onclick = function() {
             var clean = name.replace('.json','');
             navigate('#settings');
             setTimeout(function() {
@@ -1592,9 +1569,9 @@ if (typeof renderStreamer === 'function') {
                     b.setAttribute('aria-selected', String(on));
                 });
                 document.querySelectorAll('.stab-panel').forEach(function(p) { p.hidden = (p.id !== 'stab-streamers'); });
-                var card = document.querySelector('.streamer-setting-card[data-name="' + clean + '"]');
+                var card = document.querySelector('.streamer-setting-card[data-name="'+clean+'"]');
                 if (card) {
-                    safeSmoothScroll(card, {behavior: 'smooth', block: 'center'});
+                    safeSmoothScroll(card, {behavior:'smooth', block:'center'});
                     card.classList.add('is-highlighted');
                     setTimeout(function() { card.classList.remove('is-highlighted'); }, 2500);
                 }
@@ -1633,8 +1610,8 @@ function showSettingsToast(msg, isError) {
     var t = document.getElementById('settings-toast');
     if (!t) return;
     t.textContent = msg;
-    t.className   = 'settings-toast ' + (isError ? 'is-error' : 'is-ok');
-    t.hidden      = false;
+    t.className = 'settings-toast ' + (isError ? 'is-error' : 'is-ok');
+    t.hidden = false;
     clearTimeout(t._tmr);
     t._tmr = setTimeout(function() { t.hidden = true; }, 4000);
 }
@@ -1646,18 +1623,17 @@ function showRestartBanner() {
     b._tmr = setTimeout(function() { b.hidden = true; }, 15000);
 }
 
-/* ─── [4] Password protection for Settings ───────────────────────────────── */
+/* ─── Password gate ──────────────────────────────────────────────────────── */
 var _settingsUnlocked = false;
 
 function _checkSettingsPassword(config, onSuccess) {
     var pw = (config && config.settings_password) ? config.settings_password.trim() : '';
     if (!pw || _settingsUnlocked) { onSuccess(); return; }
 
-    // Build lock screen overlay if not present
     var overlay = document.getElementById('settings-lock-overlay');
     if (!overlay) {
         overlay = document.createElement('div');
-        overlay.id        = 'settings-lock-overlay';
+        overlay.id = 'settings-lock-overlay';
         overlay.className = 'settings-lock-overlay';
         overlay.innerHTML =
             '<div class="settings-lock-box">' +
@@ -1668,27 +1644,23 @@ function _checkSettingsPassword(config, onSuccess) {
               '<button class="btn btn-primary settings-lock-btn" id="settings-lock-btn"><i class="fas fa-unlock"></i> Unlock</button>' +
               '<div class="settings-lock-error" id="settings-lock-error" hidden>Wrong password</div>' +
             '</div>';
-        var settingsView = document.getElementById('view-settings');
-        if (settingsView) settingsView.insertBefore(overlay, settingsView.firstChild);
+        var sv = document.getElementById('view-settings');
+        if (sv) sv.insertBefore(overlay, sv.firstChild);
     }
 
     overlay.hidden = false;
-    // Hide actual content while locked
-    var form = document.getElementById('settings-form-wrap');
-    if (form) form.hidden = true;
 
     var doCheck = function() {
         var inp = document.getElementById('settings-lock-input');
-        var val = inp ? inp.value : '';
-        if (val === pw) {
+        if (inp && inp.value === pw) {
             _settingsUnlocked = true;
             overlay.hidden = true;
-            if (form) form.hidden = false;
             onSuccess();
         } else {
-            var errEl = document.getElementById('settings-lock-error');
-            if (errEl) { errEl.hidden = false; setTimeout(function(){ errEl.hidden = true; }, 2000); }
-            if (inp) { inp.value = ''; inp.focus(); }
+            var e = document.getElementById('settings-lock-error');
+            if (e) { e.hidden = false; setTimeout(function(){ e.hidden = true; }, 2000); }
+            var inp2 = document.getElementById('settings-lock-input');
+            if (inp2) { inp2.value = ''; inp2.focus(); }
         }
     };
 
@@ -1703,29 +1675,24 @@ function _checkSettingsPassword(config, onSuccess) {
 
 /* ─── VIEW: BETS ─────────────────────────────────────────────────────────── */
 var _betsData = null;
-
 async function renderBets() {
     showView('view-bets');
-    document.title = 'Bet History — CPM v2';
+    document.title = 'Bet History — CPM v3';
     var tbody = document.getElementById('bets-tbody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="bets-loading"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
-
     try {
         var r = await fetch('./bets');
         if (!r.ok) throw new Error(r.status);
         var bets = await r.json();
         _betsData = bets;
-
         var wins   = bets.filter(function(b){ return b.result==='WIN'; }).length;
         var losses = bets.filter(function(b){ return b.result==='LOSE'; }).length;
         var rate   = (wins+losses)>0 ? Math.round(wins/(wins+losses)*100) : 0;
-
         function s_(id, v) { var el=document.getElementById(id); if(el) el.textContent=v; }
         s_('bets-total', String(bets.length));
         s_('bets-wins',  String(wins));
         s_('bets-losses',String(losses));
         s_('bets-winrate', rate+'%');
-
         var sf = document.getElementById('bets-filter-streamer');
         if (sf) {
             var names = [];
@@ -1734,17 +1701,11 @@ async function renderBets() {
             sf.innerHTML = '<option value="">All streamers</option>' +
                 names.map(function(n){ return '<option value="'+n+'">'+n+'</option>'; }).join('');
         }
-
         function renderTable() {
             var sf2 = (document.getElementById('bets-filter-streamer')||{}).value||'';
             var rf  = (document.getElementById('bets-filter-result')||{}).value||'';
-            var filtered = (_betsData||[]).filter(function(b){
-                return (!sf2||b.streamer===sf2) && (!rf||b.result===rf);
-            });
-            if (!filtered.length) {
-                tbody.innerHTML = '<tr><td colspan="5" class="bets-loading">No bets match the filter.</td></tr>';
-                return;
-            }
+            var filtered = (_betsData||[]).filter(function(b){ return (!sf2||b.streamer===sf2)&&(!rf||b.result===rf); });
+            if (!filtered.length) { tbody.innerHTML='<tr><td colspan="5" class="bets-loading">No bets match the filter.</td></tr>'; return; }
             var BADGES = {
                 WIN:    '<span class="bet-badge bet-win"><i class="fas fa-trophy"></i> WIN</span>',
                 LOSE:   '<span class="bet-badge bet-lose"><i class="fas fa-times"></i> LOSE</span>',
@@ -1760,13 +1721,11 @@ async function renderBets() {
                 '</tr>';
             }).join('');
         }
-
         renderTable();
         var sfEl=document.getElementById('bets-filter-streamer');
         var rfEl=document.getElementById('bets-filter-result');
         if(sfEl) sfEl.onchange=renderTable;
         if(rfEl) rfEl.onchange=renderTable;
-
     } catch(err) {
         if(tbody) tbody.innerHTML='<tr><td colspan="5" class="bets-loading is-error"><i class="fas fa-triangle-exclamation"></i> '+err.message+'</td></tr>';
     }
@@ -1778,9 +1737,9 @@ var _settingsCfg = null;
 
 async function renderSettings() {
     showView('view-settings');
-    document.title = 'Settings — CPM v2';
+    document.title = 'Settings — CPM v3';
 
-    // Tab switching (idempotent)
+    // Tab switching
     document.querySelectorAll('.stab').forEach(function(btn) {
         btn.onclick = function() {
             document.querySelectorAll('.stab').forEach(function(b){
@@ -1804,13 +1763,13 @@ async function renderSettings() {
         _settingsCfg = await fetchConfig();
     } catch(err) {
         showSettingsToast('Cannot reach server: '+err.message, true);
-        _settingsCfg = {global_settings:{}, streamers:[], settings_password:''};
+        _settingsCfg = {global_settings:{}, streamers:[], settings_password:'', notifications:{}};
     }
 
-    // [4] Password gate — only proceed if unlocked
     _checkSettingsPassword(_settingsCfg, function() {
         populateGlobalForm(_settingsCfg);
         renderStreamersSettings(_settingsCfg);
+        renderNotificationsTab(_settingsCfg);
     });
 
     renderSidebar();
@@ -1827,15 +1786,13 @@ async function handleAddStreamer() {
         if(inp) inp.value='';
         _settingsCfg=await fetchConfig();
         renderStreamersSettings(_settingsCfg);
-        // [1] Reload sidebar so new streamer appears
-        state.streamersList = await (async function(){ var r=await fetch('./streamers'); return r.json(); }());
+        state.streamersList=await (async function(){ var r=await fetch('./streamers'); return r.json(); }());
         renderSidebar();
     } else {
         showSettingsToast(res.error||'Failed', true);
     }
 }
 
-/* [2] Form population — inputs have display:none via CSS, tracks animate properly */
 function populateGlobalForm(config) {
     var gs  = (config && config.global_settings) ? config.global_settings : {};
     var bet = (gs && gs.bet) ? gs.bet : {};
@@ -1852,7 +1809,6 @@ function populateGlobalForm(config) {
         el.value = (val!==undefined && val!==null) ? val : def;
         el.disabled=false; el.removeAttribute('disabled');
     }
-
     sc('g-make_predictions', gs.make_predictions, true);
     sc('g-follow_raid',      gs.follow_raid,      true);
     sc('g-claim_drops',      gs.claim_drops,      true);
@@ -1860,7 +1816,6 @@ function populateGlobalForm(config) {
     sc('g-watch_streak',     gs.watch_streak,     true);
     sc('g-community_goals',  gs.community_goals,  false);
     sc('g-stealth_mode',     bet.stealth_mode,    true);
-
     sv('g-strategy',       bet.strategy,       'SMART');
     sv('g-percentage',     bet.percentage,     5);
     sv('g-percentage_gap', bet.percentage_gap, 20);
@@ -1876,7 +1831,6 @@ async function saveGlobalSettings() {
     function gc(id){ var el=document.getElementById(id); return el?el.checked:false; }
     function gn(id,d){ var el=document.getElementById(id); return el?(parseFloat(el.value)||d):d; }
     function gs(id,d){ var el=document.getElementById(id); return (el&&el.value)?el.value:d; }
-
     _settingsCfg.global_settings={
         make_predictions: gc('g-make_predictions'),
         follow_raid:      gc('g-follow_raid'),
@@ -1905,13 +1859,12 @@ async function saveGlobalSettings() {
     }
 }
 
-/* [2] Streamer cards use proper .toggle-switch labels */
 function renderStreamersSettings(config) {
     var container=document.getElementById('streamers-settings-list');
     if(!container) return;
     var streamers=(config&&config.streamers)?config.streamers:[];
     if(!streamers.length){
-        container.innerHTML='<div class="settings-loading">No streamers found. Add one above or check config.json.</div>';
+        container.innerHTML='<div class="settings-loading">No streamers found. Add one above.</div>';
         return;
     }
     container.innerHTML='';
@@ -1921,23 +1874,16 @@ function renderStreamersSettings(config) {
         var sc  = s.settings||{};
         var bet = sc.bet||{};
         var enabled = s.enabled!==false;
-
         var card=document.createElement('div');
         card.className='streamer-setting-card';
         card.dataset.name=s.username;
-
         var stratOpts=STRATEGIES.map(function(v){
             return '<option value="'+v+'"'+(bet.strategy===v?' selected':'')+'>'+v+'</option>';
         }).join('');
-
-        // [2] Use .toggle-switch class (same as rest of site) instead of .stg-toggle
         card.innerHTML=
           '<div class="stc-header">'+
-            '<div class="stc-title">'+
-              '<strong class="stc-name">'+s.username+'</strong>'+
-            '</div>'+
+            '<div class="stc-title"><strong class="stc-name">'+s.username+'</strong></div>'+
             '<div class="stc-actions">'+
-              // enabled toggle uses .toggle-switch
               '<label class="toggle-switch compact" title="Enable/Disable streamer">'+
                 '<input type="checkbox" class="stc-enabled"'+(enabled?' checked':'')+'>'+
                 '<span class="toggle-track"></span>'+
@@ -1948,7 +1894,6 @@ function renderStreamersSettings(config) {
             '</div>'+
           '</div>'+
           '<div class="stc-body">'+
-            // use-global uses .toggle-switch
             '<label class="toggle-switch" title="Use global defaults">'+
               '<input type="checkbox" class="stc-use-global"'+(!s.settings?' checked':'')+'>'+
               '<span class="toggle-track"></span>'+
@@ -1971,25 +1916,18 @@ function renderStreamersSettings(config) {
           '</div>';
 
         card.querySelector('.stc-chart-btn').onclick=function(){ navigate('#streamer/'+encodeURIComponent(s.username)); };
-
         card.querySelector('.stc-use-global').onchange=function(){
             card.querySelector('.stc-individual').classList.toggle('is-hidden', this.checked);
         };
-
         card.querySelector('.stc-enabled').onchange=async function(){
             var res=await apiPatchStreamer(s.username, {enabled:this.checked});
             if(res.status==='ok'){
                 showSettingsToast(s.username+': '+(this.checked?'enabled':'disabled'));
                 showRestartBanner();
-                // [1] Reload sidebar immediately
                 state.streamersList=await (async function(){ var r=await fetch('./streamers'); return r.json(); }());
                 renderSidebar();
-            } else {
-                showSettingsToast(res.error||'Failed', true);
-                this.checked=!this.checked;
-            }
+            } else { showSettingsToast(res.error||'Failed', true); this.checked=!this.checked; }
         };
-
         card.querySelector('.stc-remove').onclick=async function(){
             if(!confirm('Remove "'+s.username+'"? This triggers a ~10s restart.')) return;
             var res=await apiRemoveStreamer(s.username);
@@ -1997,14 +1935,10 @@ function renderStreamersSettings(config) {
                 showSettingsToast(res.message);
                 showRestartBanner();
                 card.parentNode&&card.parentNode.removeChild(card);
-                // [1] Reload sidebar so removed streamer disappears
                 state.streamersList=await (async function(){ var r=await fetch('./streamers'); return r.json(); }());
                 renderSidebar();
-            } else {
-                showSettingsToast(res.error||'Failed', true);
-            }
+            } else { showSettingsToast(res.error||'Failed', true); }
         };
-
         card.querySelector('.stc-save').onclick=async function(){
             var useGlobal=card.querySelector('.stc-use-global').checked;
             var patch=useGlobal?{settings:null}:{settings:{
@@ -2022,22 +1956,266 @@ function renderStreamersSettings(config) {
             if(res.status==='ok') showSettingsToast(s.username+': saved ✓');
             else showSettingsToast(res.error||'Save failed', true);
         };
+        container.appendChild(card);
+    });
+}
+
+/* ─── NOTIFICATIONS TAB ──────────────────────────────────────────────────── */
+
+var ALL_EVENTS = [
+    'STREAMER_ONLINE','STREAMER_OFFLINE','GAIN_FOR_RAID','GAIN_FOR_CLAIM',
+    'GAIN_FOR_WATCH','BET_WIN','BET_LOSE','BET_REFUND','BET_FILTERS',
+    'BET_GENERAL','BET_FAILED','BET_START','BONUS_CLAIM','MOMENT_CLAIM',
+    'JOIN_RAID','DROP_CLAIM','DROP_STATUS','CHAT_MENTION'
+];
+
+var NOTIF_DEFAULT = {
+    telegram:  { enabled:false, chat_id:'', token:'', disable_notification:false, events:['BET_WIN','BET_LOSE','STREAMER_ONLINE','STREAMER_OFFLINE'] },
+    discord:   { enabled:false, webhook_api:'', events:['BET_WIN','BET_LOSE','STREAMER_ONLINE','STREAMER_OFFLINE'] },
+    webhook:   { enabled:false, endpoint:'', method:'GET', events:['BET_WIN','BET_LOSE'] },
+    matrix:    { enabled:false, username:'', password:'', homeserver:'matrix.org', room_id:'', events:['BET_LOSE','STREAMER_ONLINE','STREAMER_OFFLINE'] },
+    pushover:  { enabled:false, userkey:'', token:'', priority:0, sound:'pushover', events:['BET_WIN','BET_LOSE'] },
+    gotify:    { enabled:false, endpoint:'', priority:5, events:['BET_WIN','BET_LOSE','STREAMER_ONLINE','STREAMER_OFFLINE'] },
+};
+
+function _notifVal(cfg, key, def) {
+    return (cfg && cfg[key] !== undefined && cfg[key] !== null) ? cfg[key] : def;
+}
+
+function _eventsGrid(serviceId, selectedEvents) {
+    return '<div class="events-grid">'+
+        ALL_EVENTS.map(function(ev){
+            var checked = selectedEvents.indexOf(ev) !== -1;
+            return '<label class="event-check toggle-switch compact">'+
+                '<input type="checkbox" class="notif-event" data-service="'+serviceId+'" value="'+ev+'"'+(checked?' checked':'')+'>'+
+                '<span class="toggle-track"></span>'+
+                '<span class="toggle-label event-label">'+ev+'</span>'+
+            '</label>';
+        }).join('')+
+    '</div>';
+}
+
+function _field(label, id, type, value, placeholder, tip) {
+    var tipHtml = tip ? ' <span class="tip" data-tip="'+tip+'">?</span>' : '';
+    var inputHtml;
+    if (type === 'password') {
+        inputHtml = '<input class="input notif-input" type="password" id="'+id+'" value="'+_esc(value)+'" placeholder="'+placeholder+'...">';
+    } else if (type === 'number') {
+        inputHtml = '<input class="input notif-input" type="number" id="'+id+'" value="'+value+'" placeholder="'+placeholder+'">';
+    } else {
+        inputHtml = '<input class="input notif-input" type="text" id="'+id+'" value="'+_esc(value)+'" placeholder="'+placeholder+'...">';
+    }
+    return '<div class="stg-field notif-field">'+
+        '<label class="stg-field-label" for="'+id+'">'+label+tipHtml+'</label>'+
+        inputHtml+
+    '</div>';
+}
+
+function _selectField(label, id, options, value, tip) {
+    var tipHtml = tip ? ' <span class="tip" data-tip="'+tip+'">?</span>' : '';
+    var opts = options.map(function(o){ return '<option value="'+o+'"'+(o===value?' selected':'')+'>'+o+'</option>'; }).join('');
+    return '<div class="stg-field notif-field">'+
+        '<label class="stg-field-label" for="'+id+'">'+label+tipHtml+'</label>'+
+        '<select class="input stg-select notif-select" id="'+id+'">'+opts+'</select>'+
+    '</div>';
+}
+
+function _esc(s) {
+    return String(s||'').replace(/"/g, '&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderNotificationsTab(config) {
+    var container = document.getElementById('notifications-list');
+    if (!container) return;
+
+    var notif = config.notifications || {};
+
+    var services = [
+        {
+            id: 'telegram',
+            icon: 'fab fa-telegram',
+            title: 'Telegram',
+            hint: 'Send events to a Telegram chat via Bot API. Get your chat_id with @getmyid_bot and your token from @BotFather.',
+            buildFields: function(c) {
+                return _field('Chat ID', 'notif-tg-chat_id', 'text', c.chat_id, '@getmyid_bot', 'Chat ID to send messages. Use @getmyid_bot to get yours.')+
+                       _field('Bot Token', 'notif-tg-token', 'password', c.token, '@BotFather token', 'Telegram API token from @BotFather')+
+                       '<div class="stg-field notif-field">'+
+                         '<label class="stg-field-label">Disable Notification sound <span class="tip" data-tip="Revoke the notification sound/vibration on device">?</span></label>'+
+                         '<label class="toggle-switch compact">'+
+                           '<input type="checkbox" id="notif-tg-disable_notification"'+(c.disable_notification?' checked':'')+'>'+
+                           '<span class="toggle-track"></span><span class="toggle-label">Silent mode</span>'+
+                         '</label>'+
+                       '</div>';
+            },
+            gatherValues: function() {
+                return {
+                    chat_id: (document.getElementById('notif-tg-chat_id')||{}).value||'',
+                    token:   (document.getElementById('notif-tg-token')||{}).value||'',
+                    disable_notification: !!(document.getElementById('notif-tg-disable_notification')||{}).checked,
+                };
+            },
+        },
+        {
+            id: 'discord',
+            icon: 'fab fa-discord',
+            title: 'Discord',
+            hint: 'Send events to a Discord channel via Webhook. Go to Channel Settings → Integrations → Webhooks → New Webhook → Copy URL.',
+            buildFields: function(c) {
+                return _field('Webhook URL', 'notif-dc-webhook_api', 'text', c.webhook_api, 'https://discord.com/api/webhooks/...', 'Discord Webhook URL from Channel Settings → Integrations → Webhooks');
+            },
+            gatherValues: function() {
+                return { webhook_api: (document.getElementById('notif-dc-webhook_api')||{}).value||'' };
+            },
+        },
+        {
+            id: 'webhook',
+            icon: 'fas fa-globe',
+            title: 'Generic Webhook',
+            hint: 'POST or GET to any HTTP endpoint when events occur.',
+            buildFields: function(c) {
+                return _field('Endpoint URL', 'notif-wh-endpoint', 'text', c.endpoint, 'https://example.com/webhook', 'Webhook URL to call when an event fires')+
+                       _selectField('Method', 'notif-wh-method', ['GET','POST'], c.method||'GET', 'HTTP method: GET or POST');
+            },
+            gatherValues: function() {
+                return {
+                    endpoint: (document.getElementById('notif-wh-endpoint')||{}).value||'',
+                    method:   (document.getElementById('notif-wh-method')||{}).value||'GET',
+                };
+            },
+        },
+        {
+            id: 'matrix',
+            icon: 'fas fa-m',
+            title: 'Matrix',
+            hint: 'Send events to a Matrix room. Provide credentials and your room ID.',
+            buildFields: function(c) {
+                return _field('Username', 'notif-mx-username', 'text', c.username, 'twitch_miner', 'Matrix username (without homeserver)')+
+                       _field('Password', 'notif-mx-password', 'password', c.password||'', 'password', 'Matrix password')+
+                       _field('Homeserver', 'notif-mx-homeserver', 'text', c.homeserver||'matrix.org', 'matrix.org', 'Matrix homeserver URL')+
+                       _field('Room ID', 'notif-mx-room_id', 'text', c.room_id||'', '!roomid:matrix.org', 'Matrix Room ID');
+            },
+            gatherValues: function() {
+                return {
+                    username:   (document.getElementById('notif-mx-username')||{}).value||'',
+                    password:   (document.getElementById('notif-mx-password')||{}).value||'',
+                    homeserver: (document.getElementById('notif-mx-homeserver')||{}).value||'matrix.org',
+                    room_id:    (document.getElementById('notif-mx-room_id')||{}).value||'',
+                };
+            },
+        },
+        {
+            id: 'pushover',
+            icon: 'fas fa-paper-plane',
+            title: 'Pushover',
+            hint: 'Push notifications to iOS/Android via Pushover. Login to pushover.net to get your keys.',
+            buildFields: function(c) {
+                return _field('User Key', 'notif-po-userkey', 'password', c.userkey||'', 'Account token from pushover.net', 'Login to https://pushover.net/ — user token is on the main page')+
+                       _field('App Token', 'notif-po-token', 'password', c.token||'', 'Application token', 'Create an application on pushover.net and use its token')+
+                       _field('Priority', 'notif-po-priority', 'number', c.priority||0, '-2 to 2', 'Priority: -2=lowest, -1=low, 0=normal, 1=high, 2=emergency. See pushover.net/api#priority')+
+                       _field('Sound', 'notif-po-sound', 'text', c.sound||'pushover', 'pushover', 'Notification sound. See pushover.net/api#sounds');
+            },
+            gatherValues: function() {
+                return {
+                    userkey:  (document.getElementById('notif-po-userkey')||{}).value||'',
+                    token:    (document.getElementById('notif-po-token')||{}).value||'',
+                    priority: parseInt((document.getElementById('notif-po-priority')||{}).value)||0,
+                    sound:    (document.getElementById('notif-po-sound')||{}).value||'pushover',
+                };
+            },
+        },
+        {
+            id: 'gotify',
+            icon: 'fas fa-satellite-dish',
+            title: 'Gotify',
+            hint: 'Send push notifications via a self-hosted Gotify server. Include the API token in the endpoint URL.',
+            buildFields: function(c) {
+                return _field('Endpoint', 'notif-gf-endpoint', 'text', c.endpoint||'', 'https://example.com/message?token=TOKEN', 'Full Gotify endpoint including ?token=TOKEN')+
+                       _field('Priority', 'notif-gf-priority', 'number', c.priority||5, '5', 'Message priority (1=low, 5=normal, 10=high)');
+            },
+            gatherValues: function() {
+                return {
+                    endpoint: (document.getElementById('notif-gf-endpoint')||{}).value||'',
+                    priority: parseInt((document.getElementById('notif-gf-priority')||{}).value)||5,
+                };
+            },
+        },
+    ];
+
+    container.innerHTML = '';
+
+    services.forEach(function(svc) {
+        var cfg = Object.assign({}, NOTIF_DEFAULT[svc.id], notif[svc.id] || {});
+        var events = cfg.events || NOTIF_DEFAULT[svc.id].events;
+
+        var card = document.createElement('div');
+        card.className = 'settings-card notif-card';
+        card.innerHTML =
+            '<div class="settings-card-header notif-card-header">'+
+              '<div class="notif-card-title">'+
+                '<i class="'+svc.icon+' notif-icon"></i>'+
+                '<h2>'+svc.title+'</h2>'+
+              '</div>'+
+              '<label class="toggle-switch compact notif-enable-toggle" title="Enable '+svc.title+' notifications">'+
+                '<input type="checkbox" class="notif-enable" data-service="'+svc.id+'"'+(cfg.enabled?' checked':'')+'>'+
+                '<span class="toggle-track"></span>'+
+                '<span class="toggle-label">Enabled</span>'+
+              '</label>'+
+            '</div>'+
+            '<div class="notif-card-body'+(cfg.enabled?'':' is-hidden')+'" id="notif-body-'+svc.id+'">'+
+              '<p class="settings-card-hint notif-hint">'+svc.hint+'</p>'+
+              '<div class="settings-fields">'+svc.buildFields(cfg)+'</div>'+
+              '<div class="settings-group">'+
+                '<div class="settings-group-label">Events to send</div>'+
+                _eventsGrid(svc.id, events)+
+              '</div>'+
+              '<div class="notif-save-row">'+
+                '<button class="btn btn-primary notif-save" data-service="'+svc.id+'">'+
+                  '<i class="fas fa-floppy-disk"></i> Save '+svc.title+
+                '</button>'+
+              '</div>'+
+            '</div>';
+
+        // Enable/disable toggle shows/hides body
+        card.querySelector('.notif-enable').onchange = function() {
+            var body = document.getElementById('notif-body-'+svc.id);
+            if (body) body.classList.toggle('is-hidden', !this.checked);
+        };
+
+        // Save button
+        card.querySelector('.notif-save').onclick = async function() {
+            if(!_settingsCfg) _settingsCfg = {};
+            _settingsCfg.notifications = _settingsCfg.notifications || {};
+
+            var enableChk = card.querySelector('.notif-enable');
+            var evtChecks = Array.from(card.querySelectorAll('.notif-event:checked')).map(function(c){ return c.value; });
+            var values = svc.gatherValues();
+            values.enabled = enableChk ? enableChk.checked : false;
+            values.events  = evtChecks;
+
+            _settingsCfg.notifications[svc.id] = values;
+
+            try {
+                var res = await saveConfig(_settingsCfg);
+                showSettingsToast(svc.title + ': ' + (res.message||'✓ Saved'));
+            } catch(err) {
+                showSettingsToast('Save failed: '+err.message, true);
+            }
+        };
 
         container.appendChild(card);
     });
 }
 
-/* ─── [6] Performant Log — virtual buffer, max 500 lines, rAF scroll ─────── */
+/* ─── Performant Log ─────────────────────────────────────────────────────── */
 (function patchLog() {
     var LOG_MAX_LINES = 500;
-    var _logLines     = [];  // in-memory buffer
+    var _logLines     = [];
     var _rafPending   = false;
 
     function _flushLog() {
         _rafPending = false;
         var pre = document.getElementById('log-content');
         if (!pre) return;
-        // Trim buffer
         if (_logLines.length > LOG_MAX_LINES) {
             _logLines = _logLines.slice(_logLines.length - LOG_MAX_LINES);
         }
@@ -2049,7 +2227,6 @@ function renderStreamersSettings(config) {
     function _appendLog(text) {
         if (!text) return;
         var newLines = text.split('\n');
-        // don't add empty trailing line
         if (newLines[newLines.length - 1] === '') newLines.pop();
         _logLines = _logLines.concat(newLines);
         if (!_rafPending) {
@@ -2058,7 +2235,6 @@ function renderStreamersSettings(config) {
         }
     }
 
-    // Patch initLog to use our buffer
     var _logActive = false;
     var _logAuto   = true;
     var _logIdx    = 0;
@@ -2072,13 +2248,11 @@ function renderStreamersSettings(config) {
                 if (txt) { _appendLog(txt); _logIdx += txt.length; }
             }
         } catch (e) {}
-        if (_logAuto && _logActive) setTimeout(_poll, 2000);  // 2s instead of 1s
+        if (_logAuto && _logActive) setTimeout(_poll, 2000);
     }
 
-    // Lazy open — only start polling when log is first opened
     var logChk = document.getElementById('log');
     if (logChk) {
-        // Remove original listener by cloning
         var clone = logChk.cloneNode(true);
         logChk.parentNode.replaceChild(clone, logChk);
         clone.addEventListener('change', function() {
@@ -2088,17 +2262,15 @@ function renderStreamersSettings(config) {
             if (_logActive) _poll();
             localStorage.setItem('cpm-log', _logActive ? '1' : '0');
         });
-        // Restore saved state
         if (localStorage.getItem('cpm-log') === '1') {
-            clone.checked  = true;
-            _logActive     = true;
-            var box        = document.getElementById('log-box');
+            clone.checked = true;
+            _logActive = true;
+            var box = document.getElementById('log-box');
             if (box) box.hidden = false;
             _poll();
         }
     }
 
-    // Pause/resume button
     var pauseBtn = document.getElementById('auto-update-log');
     if (pauseBtn) {
         var pbClone = pauseBtn.cloneNode(true);
@@ -2110,19 +2282,18 @@ function renderStreamersSettings(config) {
         });
     }
 
-    // Level filter dropdown
     var logHeader = document.querySelector('.log-header');
     if (logHeader && !logHeader.querySelector('.log-level-filter')) {
         var select = document.createElement('select');
         select.className = 'log-level-filter';
-        select.title     = 'Log level filter';
+        select.title = 'Log level filter';
         select.innerHTML =
-            '<option value="1">INFO+</option>' +
-            '<option value="0">ALL</option>' +
-            '<option value="2">WARNING+</option>' +
+            '<option value="1">INFO+</option>'+
+            '<option value="0">ALL</option>'+
+            '<option value="2">WARNING+</option>'+
             '<option value="3">ERROR only</option>';
         select.onchange = function() {
-            var min   = parseInt(this.value, 10);
+            var min = parseInt(this.value, 10);
             var RANKS = {DEBUG:0, INFO:1, WARNING:2, WARN:2, ERROR:3};
             var LEVEL_RE = /\b(DEBUG|INFO|WARNING|WARN|ERROR)\b/;
             var filtered = _logLines.filter(function(line) {
