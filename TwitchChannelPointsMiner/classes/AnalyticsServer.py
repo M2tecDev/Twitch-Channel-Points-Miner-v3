@@ -31,41 +31,67 @@ DEFAULT_CONFIG = {
     "analytics": {"host": "0.0.0.0", "port": 5000, "refresh": 5, "days_ago": 7},
     "global_settings": {
         "make_predictions": True,
-        "follow_raid": True,
-        "claim_drops": True,
-        "claim_moments": True,
-        "watch_streak": True,
-        "community_goals": False,
-        "chat": "ONLINE",
+        "follow_raid":      True,
+        "claim_drops":      True,
+        "claim_moments":    True,
+        "watch_streak":     True,
+        "community_goals":  False,
+        "chat":             "ONLINE",
         "bet": {
-            "strategy": "SMART",
-            "percentage": 5,
-            "percentage_gap": 20,
-            "max_points": 50000,
-            "minimum_points": 0,
-            "stealth_mode": True,
-            "delay_mode": "FROM_END",
-            "delay": 6,
+            "strategy":        "SMART",
+            "percentage":       5,
+            "percentage_gap":  20,
+            "max_points":   50000,
+            "minimum_points":   0,
+            "stealth_mode":  True,
+            "delay_mode":  "FROM_END",
+            "delay":            6,
             "filter_condition": None,
         },
     },
+    "settings_password": "",
     "streamers": [],
 }
 
 
-# ─────────────────────────────────────────────────────────────
-#  ANALYTICS DATA HELPERS
-# ─────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────
+
+def _load_or_default():
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"config.json unreadable ({e}), using defaults")
+    return copy.deepcopy(DEFAULT_CONFIG)
+
 
 def streamers_available():
-    path = Settings.analytics_path
     try:
         return [
-            f for f in os.listdir(path)
-            if os.path.isfile(os.path.join(path, f)) and f.endswith(".json")
+            f for f in os.listdir(Settings.analytics_path)
+            if os.path.isfile(os.path.join(Settings.analytics_path, f)) and f.endswith(".json")
         ]
     except Exception:
         return []
+
+
+def _active_streamer_names():
+    """
+    Returns only the ENABLED streamers from config.json.
+    FIX #1: deleted / disabled streamers are excluded from the sidebar
+    even if their .json analytics file still exists on disk.
+    Falls back to all analytics files only when config has no streamers.
+    """
+    config     = _load_or_default()
+    configured = [
+        s["username"].strip().lower()
+        for s in config.get("streamers", [])
+        if s.get("enabled", True)
+    ]
+    if configured:
+        return set(configured)
+    return {f.strip(".json") for f in streamers_available()}
 
 
 def filter_datas(start_date, end_date, datas):
@@ -121,24 +147,26 @@ def filter_datas(start_date, end_date, datas):
 def read_json(streamer, return_response=True):
     start_date = request.args.get("startDate", type=str)
     end_date   = request.args.get("endDate",   type=str)
+    path       = Settings.analytics_path
+    streamer   = streamer if streamer.endswith(".json") else f"{streamer}.json"
+    fpath      = os.path.join(path, streamer)
 
-    path     = Settings.analytics_path
-    streamer = streamer if streamer.endswith(".json") else f"{streamer}.json"
-
-    if not os.path.exists(os.path.join(path, streamer)):
+    if not os.path.exists(fpath):
         err = {"error": f"File '{streamer}' not found."}
         logger.error(err["error"])
-        return (Response(json.dumps(err), status=404, mimetype="application/json")
-                if return_response else err)
+        if return_response:
+            return Response(json.dumps(err), status=404, mimetype="application/json")
+        return err
 
     try:
-        with open(os.path.join(path, streamer), "r") as f:
+        with open(fpath, "r") as f:
             data = json.load(f)
     except json.JSONDecodeError as e:
         err = {"error": f"JSON decode error in '{streamer}': {e}"}
         logger.error(err["error"])
-        return (Response(json.dumps(err), status=500, mimetype="application/json")
-                if return_response else err)
+        if return_response:
+            return Response(json.dumps(err), status=500, mimetype="application/json")
+        return err
 
     filtered = filter_datas(start_date, end_date, data)
     if return_response:
@@ -171,25 +199,26 @@ def index(refresh=5, days_ago=7):
 
 
 def streamers():
-    return Response(
-        json.dumps([
-            {"name": s, "points": get_challenge_points(s), "last_activity": get_last_activity(s)}
-            for s in sorted(streamers_available())
-        ]),
-        status=200, mimetype="application/json",
-    )
+    """Only return enabled streamers — deleted/disabled ones won't show in sidebar."""
+    active = _active_streamer_names()
+    result = []
+    for s in sorted(streamers_available()):
+        if s.strip(".json") in active:
+            result.append({
+                "name":          s,
+                "points":        get_challenge_points(s),
+                "last_activity": get_last_activity(s),
+            })
+    return Response(json.dumps(result), status=200, mimetype="application/json")
 
 
-# ─────────────────────────────────────────────────────────────
-#  GET /status
-# ─────────────────────────────────────────────────────────────
+# ── /status ───────────────────────────────────────────────────
 
 def make_status_handler(miner_ref):
     def status():
         result = {}
-        now_ms = time.time() * 1000
-        threshold = 12 * 60 * 1000
-
+        # FIX #3: Only return live data when miner_ref exists.
+        # Without it we return {} so the frontend shows NO dots (not all-green).
         if miner_ref is not None and getattr(miner_ref, "streamers", None):
             for s in miner_ref.streamers:
                 result[s.username] = {
@@ -197,49 +226,33 @@ def make_status_handler(miner_ref):
                     "channel_points": getattr(s, "channel_points", 0) or 0,
                     "last_activity":  get_last_activity(f"{s.username}.json"),
                 }
-        else:
-            for fname in streamers_available():
-                name = fname.strip(".json")
-                last = get_last_activity(fname)
-                result[name] = {
-                    "is_online":      (now_ms - last) < threshold,
-                    "channel_points": get_challenge_points(fname),
-                    "last_activity":  last,
-                }
         return Response(json.dumps(result), status=200, mimetype="application/json")
     return status
 
 
-# ─────────────────────────────────────────────────────────────
-#  GET /bets
-# ─────────────────────────────────────────────────────────────
+# ── /bets ─────────────────────────────────────────────────────
 
 def bets():
-    COLOR_MAP = {
-        "#36b535": "WIN",
-        "#ff4545": "LOSE",
-        "#ffe045": "PLACED",
-    }
-    all_bets = []
-    path = Settings.analytics_path
+    COLOR_MAP = {"#36b535": "WIN", "#ff4545": "LOSE", "#ffe045": "PLACED"}
+    all_bets  = []
+    active    = _active_streamer_names()
 
     for fname in streamers_available():
-        name  = fname.strip(".json")
-        fpath = os.path.join(path, fname)
+        name = fname.strip(".json")
+        if name not in active:
+            continue
         try:
-            with open(fpath, "r") as f:
+            with open(os.path.join(Settings.analytics_path, fname), "r") as f:
                 data = json.load(f)
         except Exception:
             continue
-
         annotations = data.get("annotations", [])
         series      = sorted(data.get("series", []), key=lambda e: e["x"])
-
         for ann in annotations:
             result = COLOR_MAP.get(ann.get("borderColor", ""))
             if not result:
                 continue
-            ts = ann.get("x", 0)
+            ts        = ann.get("x", 0)
             points_at = 0
             if series:
                 closest   = min(series, key=lambda e: abs(e["x"] - ts))
@@ -256,25 +269,21 @@ def bets():
     return Response(json.dumps(all_bets), status=200, mimetype="application/json")
 
 
-# ─────────────────────────────────────────────────────────────
-#  GET /summary
-# ─────────────────────────────────────────────────────────────
+# ── /summary ─────────────────────────────────────────────────
 
 def summary():
-    total_points   = 0
-    total_gained   = 0
-    total_streamers = 0
-    bets_won       = 0
-    bets_lost      = 0
+    total_points = 0; total_gained = 0; total_streamers = 0
+    bets_won = 0; bets_lost = 0
     best_streamer  = {"name": None, "points": 0}
     worst_streamer = {"name": None, "points": float("inf")}
-    path           = Settings.analytics_path
+    active = _active_streamer_names()
 
     for fname in streamers_available():
-        name  = fname.strip(".json")
-        fpath = os.path.join(path, fname)
+        name = fname.strip(".json")
+        if name not in active:
+            continue
         try:
-            with open(fpath, "r") as f:
+            with open(os.path.join(Settings.analytics_path, fname), "r") as f:
                 data = json.load(f)
         except Exception:
             continue
@@ -282,21 +291,20 @@ def summary():
         series      = data.get("series", [])
         annotations = data.get("annotations", [])
         if series:
-            current = series[-1]["y"]
-            first   = series[0]["y"]
+            current       = series[-1]["y"]
+            first         = series[0]["y"]
             total_points += current
-            total_gained += (current - first)
+            total_gained += current - first
             if current > best_streamer["points"]:
                 best_streamer = {"name": name, "points": current}
             if current < worst_streamer["points"]:
                 worst_streamer = {"name": name, "points": current}
         for ann in annotations:
             c = ann.get("borderColor", "")
-            if c == "#36b535":  bets_won  += 1
+            if c == "#36b535":   bets_won  += 1
             elif c == "#ff4545": bets_lost += 1
 
     total_bets = bets_won + bets_lost
-    win_rate   = round(bets_won / total_bets * 100, 1) if total_bets > 0 else 0.0
     return Response(json.dumps({
         "total_streamers": total_streamers,
         "total_points":    total_points,
@@ -304,39 +312,18 @@ def summary():
         "best_streamer":   best_streamer  if best_streamer["name"] else None,
         "worst_streamer":  worst_streamer if worst_streamer["name"] and total_streamers > 0 else None,
         "bets_won": bets_won, "bets_lost": bets_lost,
-        "total_bets": total_bets, "bet_win_rate": win_rate,
+        "total_bets": total_bets,
+        "bet_win_rate": round(bets_won / total_bets * 100, 1) if total_bets > 0 else 0.0,
     }), status=200, mimetype="application/json")
 
 
-# ─────────────────────────────────────────────────────────────
-#  /config  — GET / POST / streamer CRUD
-#
-#  KEY FIX: GET auto-discovers streamers from analytics folder
-#  when config.json is missing or has an empty streamers list.
-#  This means Settings → Streamers always shows something useful
-#  even before the user has created a config.json.
-# ─────────────────────────────────────────────────────────────
-
-def _load_or_default():
-    """Load config.json, or return a deep copy of DEFAULT_CONFIG."""
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.warning(f"Could not read config.json: {e}")
-    return copy.deepcopy(DEFAULT_CONFIG)
-
+# ── /config CRUD ──────────────────────────────────────────────
 
 def _auto_fill_streamers(config):
-    """
-    If the streamers list is empty, populate it from the analytics folder.
-    Does NOT write to disk — only fills the in-memory dict for the response.
-    """
     if not config.get("streamers"):
         config["streamers"] = [
-            {"username": s.strip(".json"), "enabled": True, "settings": None}
-            for s in sorted(streamers_available())
+            {"username": fname.strip(".json"), "enabled": True, "settings": None}
+            for fname in sorted(streamers_available())
         ]
 
 
@@ -354,10 +341,8 @@ def save_config():
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         logger.info("config.json updated via web UI")
-        return Response(json.dumps({
-            "status": "ok",
-            "message": "Saved. Settings hot-reload in ~2s. Streamer list changes restart in ~10s.",
-        }), status=200, mimetype="application/json")
+        return Response(json.dumps({"status": "ok", "message": "Saved. Hot-reload in ~2s."}),
+                        status=200, mimetype="application/json")
     except Exception as e:
         return Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
 
@@ -366,35 +351,23 @@ def add_streamer():
     body = request.get_json(force=True)
     if not body or "username" not in body:
         return Response(json.dumps({"error": "username required"}), status=400, mimetype="application/json")
-
     config   = _load_or_default()
     username = body["username"].strip().lower()
-
-    existing = [s["username"] for s in config.get("streamers", [])]
-    if username in existing:
+    if username in [s["username"] for s in config.get("streamers", [])]:
         return Response(json.dumps({"error": f"'{username}' already in list"}), status=409, mimetype="application/json")
-
-    config.setdefault("streamers", []).append({
-        "username": username, "enabled": True, "settings": body.get("settings"),
-    })
+    config.setdefault("streamers", []).append({"username": username, "enabled": True, "settings": body.get("settings")})
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
-    logger.info(f"Streamer '{username}' added — miner restart pending")
-    return Response(json.dumps({
-        "status": "ok",
-        "message": f"'{username}' added. Miner restarts in ~10s.",
-    }), status=201, mimetype="application/json")
+    return Response(json.dumps({"status": "ok", "message": f"'{username}' added. Miner restarts in ~10s."}),
+                    status=201, mimetype="application/json")
 
 
 def patch_streamer(username):
     body = request.get_json(force=True)
     if not body:
         return Response(json.dumps({"error": "No JSON body"}), status=400, mimetype="application/json")
-
     config = _load_or_default()
-    # Auto-fill so we can patch even if not yet persisted
     _auto_fill_streamers(config)
-
     found = False
     for s in config.get("streamers", []):
         if s["username"] == username:
@@ -411,13 +384,10 @@ def patch_streamer(username):
                 s["enabled"] = bool(body["enabled"])
             found = True
             break
-
     if not found:
         return Response(json.dumps({"error": f"'{username}' not found"}), status=404, mimetype="application/json")
-
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
-    logger.info(f"Streamer '{username}' patched via UI")
     return Response(json.dumps({"status": "ok", "message": f"'{username}' updated."}),
                     status=200, mimetype="application/json")
 
@@ -425,29 +395,20 @@ def patch_streamer(username):
 def delete_streamer(username):
     config = _load_or_default()
     _auto_fill_streamers(config)
-
     before = len(config.get("streamers", []))
     config["streamers"] = [s for s in config.get("streamers", []) if s["username"] != username]
-
     if len(config["streamers"]) == before:
         return Response(json.dumps({"error": f"'{username}' not found"}), status=404, mimetype="application/json")
-
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
-    logger.info(f"Streamer '{username}' removed — miner restart pending")
-    return Response(json.dumps({
-        "status": "ok",
-        "message": f"'{username}' removed. Miner restarts in ~10s.",
-    }), status=200, mimetype="application/json")
+    return Response(json.dumps({"status": "ok", "message": f"'{username}' removed. Miner restarts in ~10s."}),
+                    status=200, mimetype="application/json")
 
 
-# ─────────────────────────────────────────────────────────────
-#  ASSETS
-# ─────────────────────────────────────────────────────────────
+# ── Assets ────────────────────────────────────────────────────
 
 def download_assets(assets_folder, required_files):
     Path(assets_folder).mkdir(parents=True, exist_ok=True)
-    logger.info(f"Downloading assets to {assets_folder}")
     for f in required_files:
         if not os.path.isfile(os.path.join(assets_folder, f)):
             if download_file(os.path.join("assets", f), os.path.join(assets_folder, f)):
@@ -469,9 +430,7 @@ def check_assets():
 last_sent_log_index = 0
 
 
-# ─────────────────────────────────────────────────────────────
-#  SERVER CLASS
-# ─────────────────────────────────────────────────────────────
+# ── Server class ──────────────────────────────────────────────
 
 class AnalyticsServer(Thread):
     def __init__(
@@ -492,8 +451,7 @@ class AnalyticsServer(Thread):
         self.days_ago = days_ago
         self.username = username
         self.miner    = miner
-
-        _miner = self.miner
+        _miner        = self.miner
 
         def generate_log():
             global last_sent_log_index
@@ -514,17 +472,14 @@ class AnalyticsServer(Thread):
             static_folder=os.path.join(Path().absolute(), "assets"),
         )
 
-        # Original routes (unchanged)
-        self.app.add_url_rule("/",                        "index",     index,    defaults={"refresh": refresh, "days_ago": days_ago}, methods=["GET"])
-        self.app.add_url_rule("/streamers",               "streamers", streamers, methods=["GET"])
-        self.app.add_url_rule("/json/<string:streamer>",  "json",      read_json, methods=["GET"])
-        self.app.add_url_rule("/json_all",                "json_all",  json_all,  methods=["GET"])
+        self.app.add_url_rule("/", "index", index, defaults={"refresh": refresh, "days_ago": days_ago}, methods=["GET"])
+        self.app.add_url_rule("/streamers",               "streamers", streamers,    methods=["GET"])
+        self.app.add_url_rule("/json/<string:streamer>",  "json",      read_json,    methods=["GET"])
+        self.app.add_url_rule("/json_all",                "json_all",  json_all,     methods=["GET"])
         self.app.add_url_rule("/log",                     "log",       generate_log, methods=["GET"])
-
-        # New routes
-        self.app.add_url_rule("/status",                            "status",         make_status_handler(_miner), methods=["GET"])
-        self.app.add_url_rule("/bets",                              "bets",           bets,            methods=["GET"])
-        self.app.add_url_rule("/summary",                           "summary",        summary,         methods=["GET"])
+        self.app.add_url_rule("/status",  "status",  make_status_handler(_miner), methods=["GET"])
+        self.app.add_url_rule("/bets",    "bets",    bets,    methods=["GET"])
+        self.app.add_url_rule("/summary", "summary", summary, methods=["GET"])
         self.app.add_url_rule("/config",                            "get_config",     get_config,      methods=["GET"])
         self.app.add_url_rule("/config",                            "save_config",    save_config,     methods=["POST"])
         self.app.add_url_rule("/config/streamer",                   "add_streamer",   add_streamer,    methods=["POST"])
@@ -532,8 +487,6 @@ class AnalyticsServer(Thread):
         self.app.add_url_rule("/config/streamer/<string:username>", "del_streamer",   delete_streamer, methods=["DELETE"])
 
     def run(self):
-        logger.info(
-            f"Analytics running on http://{self.host}:{self.port}/",
-            extra={"emoji": ":globe_with_meridians:"},
-        )
+        logger.info(f"Analytics running on http://{self.host}:{self.port}/",
+                    extra={"emoji": ":globe_with_meridians:"})
         self.app.run(host=self.host, port=self.port, threaded=True, debug=False)

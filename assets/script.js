@@ -1362,131 +1362,88 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Init log ──────────────────────────────
     initLog();
 });
-/* ─── [M] Safari-safe scroll helper ─────────────────────────────────────── */
+/* ─── Safari-safe scroll ─────────────────────────────────────────────────── */
 function safeSmoothScroll(el, opts) {
     if (!el) return;
-    try {
-        el.scrollIntoView(opts);
-    } catch (_) {
-        try { el.scrollIntoView(true); } catch (__) {}
-    }
+    try { el.scrollIntoView(opts); }
+    catch (_) { try { el.scrollIntoView(true); } catch (__) {} }
 }
 
-/* ─── [H] Patch weeklyAgg — clamp negatives to 0 ────────────────────────── */
+/* ─── weeklyAgg: clamp negatives to 0 ───────────────────────────────────── */
 if (typeof weeklyAgg === 'function') {
-    const _wkOrig = weeklyAgg;
+    var _wkOrig = weeklyAgg;
     weeklyAgg = function(series) {
-        const r = _wkOrig(series);
+        var r = _wkOrig(series);
         return r.map(function(v) { return Math.max(0, v || 0); });
     };
 }
 
-/* ─── [L] Cache cap (max 30 entries) ────────────────────────────────────── */
-const _CACHE_MAX = 30;
+/* ─── Cache cap (max 30 entries) ─────────────────────────────────────────── */
+var _CACHE_MAX = 30;
 function _cacheSet(name, value) {
     state.seriesCache.set(name, value);
     if (state.seriesCache.size > _CACHE_MAX) {
-        var firstKey = state.seriesCache.keys().next().value;
-        state.seriesCache.delete(firstKey);
+        state.seriesCache.delete(state.seriesCache.keys().next().value);
     }
 }
-/* Patch ensureSeriesCache to use bounded setter */
-if (typeof ensureSeriesCache === 'function') {
-    const _ensureOrig = ensureSeriesCache;
-    ensureSeriesCache = async function(name) {
-        var cached = state.seriesCache.get(name);
-        if (cached && (Date.now() - cached.cachedAt) < 300000) return;
-        var start = state.startDate || (function() {
-            var d = new Date(); d.setDate(d.getDate() - DAYS_BACK); return d;
-        }());
-        var end = state.endDate || new Date();
-        try {
-            var data = await fetchStreamerData(name, start, end, new AbortController().signal);
-            _cacheSet(name, {
-                series:      data.series || [],
-                annotations: (data.annotations || []).map(function(a, i) { return Object.assign({}, a, {id: 'a' + i}); }),
-                cachedAt:    Date.now(),
-            });
-        } catch(e) {}
-    };
-}
 
-/* ─── [L] preloadStreakData runs only once + updates events count after ─── */
+/* ─── preloadStreakData: run once, update events count after ─────────────── */
 state.preloadDone = false;
 if (typeof preloadStreakData === 'function') {
-    const _preloadOrig = preloadStreakData;
+    var _preloadOrig = preloadStreakData;
     preloadStreakData = async function() {
         if (state.preloadDone) return;
         state.preloadDone = true;
         await _preloadOrig();
-        /* ─── [A] Update event count on dashboard after preload ─── */
         if (state.view === 'dashboard') {
             var eventCount = 0;
             state.seriesCache.forEach(function(d) { eventCount += (d.annotations ? d.annotations.length : 0); });
             var el = document.getElementById('ds-events');
             if (el) el.textContent = String(eventCount);
-            /* Also rebuild activity feed now that we have more data */
             if (typeof renderActivityFeed === 'function') renderActivityFeed();
-            /* And re-render sidebar so streak badges appear */
             renderSidebar();
         }
     };
 }
 
-/* ─── [I] Better renderAnnotationTimeline ───────────────────────────────── */
+/* ─── Improved renderAnnotationTimeline ─────────────────────────────────── */
 if (typeof renderAnnotationTimeline === 'function') {
     renderAnnotationTimeline = function(annotations) {
         var tl = document.getElementById('annotation-timeline');
         if (!tl) return;
-
         var COLOR_META = {
             '#36b535': {icon: '🏆', label: 'WIN',    cls: 'tl-win'},
             '#ff4545': {icon: '❌', label: 'LOSE',   cls: 'tl-lose'},
             '#ffe045': {icon: '🎯', label: 'BET',    cls: 'tl-bet'},
             '#45c1ff': {icon: '🔥', label: 'STREAK', cls: 'tl-streak'},
         };
-
         var valid = (annotations || []).filter(function(a) {
             return a && a.x && (a.borderColor || (a.label && a.label.text));
         });
-
         if (!valid.length) {
-            tl.innerHTML = '';
-            var empty = document.createElement('div');
-            empty.className = 'timeline-empty';
-            empty.innerHTML = '<i class="fas fa-calendar-xmark"></i><span>No events in selected range</span>';
-            tl.appendChild(empty);
+            tl.innerHTML = '<div class="timeline-empty"><i class="fas fa-calendar-xmark"></i><span>No events in selected range</span></div>';
             return;
         }
-
         var sorted = valid.slice().sort(function(a, b) { return (b.x || 0) - (a.x || 0); });
         var frag   = document.createDocumentFragment();
-
         sorted.forEach(function(a) {
             var meta = COLOR_META[a.borderColor] || {icon: '⚡', label: 'EVENT', cls: ''};
             var item = document.createElement('div');
             item.className = 'timeline-item ' + meta.cls;
-
             var dot = document.createElement('div');
             dot.className = 'timeline-dot';
             dot.style.background = a.borderColor || 'var(--accent-b)';
-            dot.setAttribute('aria-hidden', 'true');
-
             var body = document.createElement('div');
             body.className = 'timeline-body';
-
             var timeEl = document.createElement('div');
             timeEl.className = 'timeline-time';
             timeEl.textContent = a.x ? fmtTs(a.x) : '—';
-
             var labelEl = document.createElement('div');
             labelEl.className = 'timeline-label';
             labelEl.textContent = (a.label && a.label.text) ? a.label.text : meta.label;
-
             var badge = document.createElement('span');
             badge.className = 'timeline-badge';
             badge.textContent = meta.icon + ' ' + meta.label;
-
             body.appendChild(timeEl);
             body.appendChild(labelEl);
             body.appendChild(badge);
@@ -1494,13 +1451,12 @@ if (typeof renderAnnotationTimeline === 'function') {
             item.appendChild(body);
             frag.appendChild(item);
         });
-
         tl.innerHTML = '';
         tl.appendChild(frag);
     };
 }
 
-/* ─── [D] parseRoute + showView + router overrides ──────────────────────── */
+/* ─── [1+3] parseRoute / showView / router overrides ────────────────────── */
 var _pRouteOrig = parseRoute;
 parseRoute = function() {
     var h = location.hash || '#dashboard';
@@ -1511,65 +1467,84 @@ parseRoute = function() {
 
 var _showViewOrig = showView;
 showView = function(id) {
-    var ALL = ['view-dashboard','view-streamer','view-compare','view-bets','view-settings'];
-    ALL.forEach(function(v) {
+    ['view-dashboard','view-streamer','view-compare','view-bets','view-settings'].forEach(function(v) {
         var el = document.getElementById(v);
         if (el) el.hidden = (v !== id);
     });
 };
 
-var _routerOrig = router;
 router = async function() {
     var route    = parseRoute();
     var prevView = state.view;
     state.view   = route.view;
 
-    /* [D] set data-current-view so CSS can hide sidebar in settings */
     var shell = document.querySelector('.app-shell');
     if (shell) shell.dataset.currentView = route.view;
 
-    if (prevView === 'compare' && route.view !== 'compare') {
-        state.compareSet.clear();
-    }
+    if (prevView === 'compare' && route.view !== 'compare') state.compareSet.clear();
 
     document.querySelectorAll('.nav-link').forEach(function(a) {
         a.classList.toggle('is-active', a.dataset.view === route.view);
     });
-
     var hint = document.getElementById('compare-hint');
     if (hint) hint.hidden = (route.view !== 'compare');
 
     clearTimeout(refreshTimer);
 
+    /* [5] Set page title per view */
+    var TITLES = {dashboard: 'Overview', streamer: '', compare: 'Compare', bets: 'Bet History', settings: 'Settings'};
+
     switch (route.view) {
-        case 'dashboard': await renderDashboard(); break;
-        case 'streamer':  await renderStreamer(route.param); break;
-        case 'compare':   await renderCompare();  break;
-        case 'bets':      await renderBets();     break;
-        case 'settings':  await renderSettings(); break;
+        case 'dashboard':
+            document.title = 'Overview — CPM v2';
+            await renderDashboard();
+            break;
+        case 'streamer':
+            await renderStreamer(route.param);
+            break;
+        case 'compare':
+            document.title = 'Compare — CPM v2';
+            await renderCompare();
+            break;
+        case 'bets':
+            document.title = 'Bet History — CPM v2';
+            await renderBets();
+            break;
+        case 'settings':
+            document.title = 'Settings — CPM v2';
+            await renderSettings();
+            break;
     }
 };
 
-/* ─── Status polling (sidebar dots) ─────────────────────────────────────── */
+/* ─── [3] Status polling — no false-green dots ───────────────────────────── */
+// /status now returns {} when no live miner is running (fixed in AnalyticsServer.py)
+// so the sidebar never adds dots when there's no real data.
 state.statusMap = {};
 
 async function fetchStatus() {
     try {
         var r = await fetch('./status');
-        if (r.ok) { state.statusMap = await r.json(); renderSidebar(); }
+        if (r.ok) {
+            state.statusMap = await r.json();
+            renderSidebar();
+        }
     } catch(e) {}
 }
 setInterval(fetchStatus, 30000);
 fetchStatus();
 
+/* ─── [3] Sidebar dot injection (only when data exists) ─────────────────── */
 var _sbOrig = renderSidebar;
 renderSidebar = function() {
     _sbOrig();
     var ul = document.getElementById('streamers-list');
     if (!ul) return;
     ul.querySelectorAll('li[data-name]').forEach(function(li) {
-        var name = li.dataset.name;
-        var info = state.statusMap[name] || state.statusMap[name ? name.replace('.json','') : ''];
+        var name  = li.dataset.name;
+        var clean = name ? name.replace('.json', '') : '';
+        var info  = state.statusMap[clean] || state.statusMap[name];
+        // [3] Only add dot if the server actually reported this streamer
         if (!info) return;
         var old = li.querySelector('.status-dot');
         if (old) old.parentNode.removeChild(old);
@@ -1582,28 +1557,26 @@ renderSidebar = function() {
     });
 };
 
-/* ─── [J] Mobile: sidebar closes after streamer click ───────────────────── */
+/* ─── Mobile: sidebar closes after streamer click ────────────────────────── */
 document.addEventListener('click', function(e) {
     var li = e.target && e.target.closest ? e.target.closest('#streamers-list li[data-name]') : null;
     if (!li || state.view === 'compare') return;
     if (window.innerWidth < 900) {
-        var sidebar = document.getElementById('app-sidebar');
-        if (sidebar) sidebar.classList.remove('is-open');
+        var sb = document.getElementById('app-sidebar');
+        if (sb) sb.classList.remove('is-open');
     }
 }, true);
 
-/* ─── [G] Gear button in streamer hero ──────────────────────────────────── */
+/* ─── Gear button in streamer hero ──────────────────────────────────────── */
 if (typeof renderStreamer === 'function') {
     var _rsOrig = renderStreamer;
     renderStreamer = async function(name) {
         await _rsOrig(name);
-
+        /* [5] Title already set inside original renderStreamer, keep it */
         var old = document.getElementById('btn-streamer-settings');
         if (old && old.parentNode) old.parentNode.removeChild(old);
-
         var actions = document.querySelector('.streamer-hero-actions');
         if (!actions || !name) return;
-
         var btn = document.createElement('button');
         btn.id        = 'btn-streamer-settings';
         btn.className = 'btn btn-sm';
@@ -1613,15 +1586,12 @@ if (typeof renderStreamer === 'function') {
             var clean = name.replace('.json','');
             navigate('#settings');
             setTimeout(function() {
-                /* Switch to Streamers tab */
                 document.querySelectorAll('.stab').forEach(function(b) {
                     var on = b.dataset.stab === 'streamers';
                     b.classList.toggle('is-active', on);
                     b.setAttribute('aria-selected', String(on));
                 });
-                document.querySelectorAll('.stab-panel').forEach(function(p) {
-                    p.hidden = (p.id !== 'stab-streamers');
-                });
+                document.querySelectorAll('.stab-panel').forEach(function(p) { p.hidden = (p.id !== 'stab-streamers'); });
                 var card = document.querySelector('.streamer-setting-card[data-name="' + clean + '"]');
                 if (card) {
                     safeSmoothScroll(card, {behavior: 'smooth', block: 'center'});
@@ -1630,8 +1600,6 @@ if (typeof renderStreamer === 'function') {
                 }
             }, 350);
         };
-
-        /* Prepend before first child of actions */
         if (actions.firstChild) actions.insertBefore(btn, actions.firstChild);
         else actions.appendChild(btn);
     };
@@ -1644,36 +1612,19 @@ async function fetchConfig() {
     return r.json();
 }
 async function saveConfig(data) {
-    var r = await fetch('./config', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data),
-    });
+    var r = await fetch('./config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
     return r.json();
 }
 async function apiAddStreamer(username) {
-    var r = await fetch('./config/streamer', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username: username}),
-    });
+    var r = await fetch('./config/streamer', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:username})});
     return r.json();
 }
 async function apiRemoveStreamer(username) {
-    var r = await fetch('./config/streamer/' + encodeURIComponent(username), {method: 'DELETE'});
+    var r = await fetch('./config/streamer/'+encodeURIComponent(username), {method:'DELETE'});
     return r.json();
 }
 async function apiPatchStreamer(username, patch) {
-    var r = await fetch('./config/streamer/' + encodeURIComponent(username), {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(patch),
-    });
-    return r.json();
-}
-async function fetchBets() {
-    var r = await fetch('./bets');
-    if (!r.ok) throw new Error('GET /bets: ' + r.status);
+    var r = await fetch('./config/streamer/'+encodeURIComponent(username), {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(patch)});
     return r.json();
 }
 
@@ -1695,43 +1646,100 @@ function showRestartBanner() {
     b._tmr = setTimeout(function() { b.hidden = true; }, 15000);
 }
 
+/* ─── [4] Password protection for Settings ───────────────────────────────── */
+var _settingsUnlocked = false;
+
+function _checkSettingsPassword(config, onSuccess) {
+    var pw = (config && config.settings_password) ? config.settings_password.trim() : '';
+    if (!pw || _settingsUnlocked) { onSuccess(); return; }
+
+    // Build lock screen overlay if not present
+    var overlay = document.getElementById('settings-lock-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id        = 'settings-lock-overlay';
+        overlay.className = 'settings-lock-overlay';
+        overlay.innerHTML =
+            '<div class="settings-lock-box">' +
+              '<i class="fas fa-lock settings-lock-icon"></i>' +
+              '<h2 class="settings-lock-title">Settings locked</h2>' +
+              '<p class="settings-lock-hint">Enter the password to continue</p>' +
+              '<input class="input settings-lock-input" id="settings-lock-input" type="password" placeholder="Password…" autocomplete="current-password">' +
+              '<button class="btn btn-primary settings-lock-btn" id="settings-lock-btn"><i class="fas fa-unlock"></i> Unlock</button>' +
+              '<div class="settings-lock-error" id="settings-lock-error" hidden>Wrong password</div>' +
+            '</div>';
+        var settingsView = document.getElementById('view-settings');
+        if (settingsView) settingsView.insertBefore(overlay, settingsView.firstChild);
+    }
+
+    overlay.hidden = false;
+    // Hide actual content while locked
+    var form = document.getElementById('settings-form-wrap');
+    if (form) form.hidden = true;
+
+    var doCheck = function() {
+        var inp = document.getElementById('settings-lock-input');
+        var val = inp ? inp.value : '';
+        if (val === pw) {
+            _settingsUnlocked = true;
+            overlay.hidden = true;
+            if (form) form.hidden = false;
+            onSuccess();
+        } else {
+            var errEl = document.getElementById('settings-lock-error');
+            if (errEl) { errEl.hidden = false; setTimeout(function(){ errEl.hidden = true; }, 2000); }
+            if (inp) { inp.value = ''; inp.focus(); }
+        }
+    };
+
+    var btn = document.getElementById('settings-lock-btn');
+    if (btn) btn.onclick = doCheck;
+    var inp = document.getElementById('settings-lock-input');
+    if (inp) {
+        inp.onkeydown = function(e) { if (e.key === 'Enter') doCheck(); };
+        setTimeout(function(){ inp.focus(); }, 50);
+    }
+}
+
 /* ─── VIEW: BETS ─────────────────────────────────────────────────────────── */
 var _betsData = null;
 
 async function renderBets() {
     showView('view-bets');
-    document.title = 'Bets — CPM v2';
+    document.title = 'Bet History — CPM v2';
     var tbody = document.getElementById('bets-tbody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="bets-loading"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
 
     try {
-        var bets = await (async function() { var r = await fetch('./bets'); if (!r.ok) throw new Error(r.status); return r.json(); }());
+        var r = await fetch('./bets');
+        if (!r.ok) throw new Error(r.status);
+        var bets = await r.json();
         _betsData = bets;
 
-        var wins   = bets.filter(function(b) { return b.result === 'WIN'; }).length;
-        var losses = bets.filter(function(b) { return b.result === 'LOSE'; }).length;
-        var rate   = (wins + losses) > 0 ? Math.round(wins / (wins + losses) * 100) : 0;
+        var wins   = bets.filter(function(b){ return b.result==='WIN'; }).length;
+        var losses = bets.filter(function(b){ return b.result==='LOSE'; }).length;
+        var rate   = (wins+losses)>0 ? Math.round(wins/(wins+losses)*100) : 0;
 
-        function s_(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
-        s_('bets-total',   String(bets.length));
-        s_('bets-wins',    String(wins));
-        s_('bets-losses',  String(losses));
-        s_('bets-winrate', rate + '%');
+        function s_(id, v) { var el=document.getElementById(id); if(el) el.textContent=v; }
+        s_('bets-total', String(bets.length));
+        s_('bets-wins',  String(wins));
+        s_('bets-losses',String(losses));
+        s_('bets-winrate', rate+'%');
 
         var sf = document.getElementById('bets-filter-streamer');
         if (sf) {
             var names = [];
-            bets.forEach(function(b) { if (names.indexOf(b.streamer) === -1) names.push(b.streamer); });
+            bets.forEach(function(b){ if(names.indexOf(b.streamer)===-1) names.push(b.streamer); });
             names.sort();
             sf.innerHTML = '<option value="">All streamers</option>' +
-                names.map(function(n) { return '<option value="' + n + '">' + n + '</option>'; }).join('');
+                names.map(function(n){ return '<option value="'+n+'">'+n+'</option>'; }).join('');
         }
 
         function renderTable() {
-            var sf2 = (document.getElementById('bets-filter-streamer') || {}).value || '';
-            var rf  = (document.getElementById('bets-filter-result')   || {}).value || '';
-            var filtered = (_betsData || []).filter(function(b) {
-                return (!sf2 || b.streamer === sf2) && (!rf || b.result === rf);
+            var sf2 = (document.getElementById('bets-filter-streamer')||{}).value||'';
+            var rf  = (document.getElementById('bets-filter-result')||{}).value||'';
+            var filtered = (_betsData||[]).filter(function(b){
+                return (!sf2||b.streamer===sf2) && (!rf||b.result===rf);
             });
             if (!filtered.length) {
                 tbody.innerHTML = '<tr><td colspan="5" class="bets-loading">No bets match the filter.</td></tr>';
@@ -1742,25 +1750,25 @@ async function renderBets() {
                 LOSE:   '<span class="bet-badge bet-lose"><i class="fas fa-times"></i> LOSE</span>',
                 PLACED: '<span class="bet-badge bet-placed"><i class="fas fa-hourglass-half"></i> PLACED</span>',
             };
-            tbody.innerHTML = filtered.map(function(b) {
-                return '<tr>' +
-                    '<td class="bets-ts">' + new Date(b.timestamp).toLocaleString('de-DE') + '</td>' +
-                    '<td class="bets-streamer"><a href="#streamer/' + encodeURIComponent(b.streamer) + '">' + b.streamer + '</a></td>' +
-                    '<td class="bets-title" title="' + (b.title || '') + '">' + (b.title || '—') + '</td>' +
-                    '<td>' + (BADGES[b.result] || b.result) + '</td>' +
-                    '<td class="bets-pts">' + fmt(b.points_at) + '</td>' +
+            tbody.innerHTML = filtered.map(function(b){
+                return '<tr>'+
+                    '<td class="bets-ts">'+new Date(b.timestamp).toLocaleString('de-DE')+'</td>'+
+                    '<td class="bets-streamer"><a href="#streamer/'+encodeURIComponent(b.streamer)+'">'+b.streamer+'</a></td>'+
+                    '<td class="bets-title" title="'+(b.title||'')+'">'+( b.title||'—')+'</td>'+
+                    '<td>'+(BADGES[b.result]||b.result)+'</td>'+
+                    '<td class="bets-pts">'+fmt(b.points_at)+'</td>'+
                 '</tr>';
             }).join('');
         }
 
         renderTable();
-        var sfEl = document.getElementById('bets-filter-streamer');
-        var rfEl = document.getElementById('bets-filter-result');
-        if (sfEl) sfEl.onchange = renderTable;
-        if (rfEl) rfEl.onchange = renderTable;
+        var sfEl=document.getElementById('bets-filter-streamer');
+        var rfEl=document.getElementById('bets-filter-result');
+        if(sfEl) sfEl.onchange=renderTable;
+        if(rfEl) rfEl.onchange=renderTable;
 
-    } catch (err) {
-        if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="bets-loading is-error"><i class="fas fa-triangle-exclamation"></i> ' + err.message + '</td></tr>';
+    } catch(err) {
+        if(tbody) tbody.innerHTML='<tr><td colspan="5" class="bets-loading is-error"><i class="fas fa-triangle-exclamation"></i> '+err.message+'</td></tr>';
     }
     renderSidebar();
 }
@@ -1772,82 +1780,77 @@ async function renderSettings() {
     showView('view-settings');
     document.title = 'Settings — CPM v2';
 
-    /* Tab switching */
+    // Tab switching (idempotent)
     document.querySelectorAll('.stab').forEach(function(btn) {
         btn.onclick = function() {
-            document.querySelectorAll('.stab').forEach(function(b) {
-                b.classList.remove('is-active');
-                b.setAttribute('aria-selected', 'false');
+            document.querySelectorAll('.stab').forEach(function(b){
+                b.classList.remove('is-active'); b.setAttribute('aria-selected','false');
             });
-            document.querySelectorAll('.stab-panel').forEach(function(p) { p.hidden = true; });
-            btn.classList.add('is-active');
-            btn.setAttribute('aria-selected', 'true');
-            var panel = document.getElementById('stab-' + btn.dataset.stab);
-            if (panel) panel.hidden = false;
+            document.querySelectorAll('.stab-panel').forEach(function(p){ p.hidden=true; });
+            btn.classList.add('is-active'); btn.setAttribute('aria-selected','true');
+            var panel=document.getElementById('stab-'+btn.dataset.stab);
+            if(panel) panel.hidden=false;
         };
     });
 
-    /* [F] Use onclick — never stacks */
-    var saveBtn = document.getElementById('btn-save-global');
-    if (saveBtn) saveBtn.onclick = saveGlobalSettings;
+    var saveBtn=document.getElementById('btn-save-global');
+    if(saveBtn) saveBtn.onclick=saveGlobalSettings;
+    var addBtn=document.getElementById('btn-add-streamer');
+    if(addBtn) addBtn.onclick=handleAddStreamer;
+    var addInp=document.getElementById('new-streamer-input');
+    if(addInp) addInp.onkeydown=function(e){ if(e.key==='Enter') handleAddStreamer(); };
 
-    var addBtn = document.getElementById('btn-add-streamer');
-    if (addBtn) addBtn.onclick = handleAddStreamer;
-
-    var addInp = document.getElementById('new-streamer-input');
-    if (addInp) addInp.onkeydown = function(e) { if (e.key === 'Enter') handleAddStreamer(); };
-
-    /* [B] /config never 404 anymore; server auto-fills streamers from analytics */
     try {
         _settingsCfg = await fetchConfig();
-    } catch (err) {
-        showSettingsToast('Could not reach server: ' + err.message, true);
-        _settingsCfg = {global_settings: {}, streamers: []};
+    } catch(err) {
+        showSettingsToast('Cannot reach server: '+err.message, true);
+        _settingsCfg = {global_settings:{}, streamers:[], settings_password:''};
     }
 
-    /* [E] Always populate form with correct values */
-    populateGlobalForm(_settingsCfg);
-    /* [C] Always show streamer cards (auto-populated from analytics if config empty) */
-    renderStreamersSettings(_settingsCfg);
+    // [4] Password gate — only proceed if unlocked
+    _checkSettingsPassword(_settingsCfg, function() {
+        populateGlobalForm(_settingsCfg);
+        renderStreamersSettings(_settingsCfg);
+    });
 
     renderSidebar();
 }
 
 async function handleAddStreamer() {
-    var inp = document.getElementById('new-streamer-input');
-    var val = inp ? inp.value.trim().toLowerCase() : '';
-    if (!val) { showSettingsToast('Enter a streamer username', true); return; }
-
-    var res = await apiAddStreamer(val);
-    if (res.status === 'ok') {
+    var inp=document.getElementById('new-streamer-input');
+    var val=inp ? inp.value.trim().toLowerCase() : '';
+    if(!val){ showSettingsToast('Enter a streamer username', true); return; }
+    var res=await apiAddStreamer(val);
+    if(res.status==='ok'){
         showSettingsToast(res.message);
         showRestartBanner();
-        if (inp) inp.value = '';
-        _settingsCfg = await fetchConfig();
+        if(inp) inp.value='';
+        _settingsCfg=await fetchConfig();
         renderStreamersSettings(_settingsCfg);
+        // [1] Reload sidebar so new streamer appears
+        state.streamersList = await (async function(){ var r=await fetch('./streamers'); return r.json(); }());
+        renderSidebar();
     } else {
-        showSettingsToast(res.error || 'Failed to add', true);
+        showSettingsToast(res.error||'Failed', true);
     }
 }
 
-/* [E] Form population — explicit disabled=false + full fallbacks */
+/* [2] Form population — inputs have display:none via CSS, tracks animate properly */
 function populateGlobalForm(config) {
     var gs  = (config && config.global_settings) ? config.global_settings : {};
     var bet = (gs && gs.bet) ? gs.bet : {};
 
     function sc(id, val, def) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        el.checked  = (val !== undefined && val !== null) ? Boolean(val) : def;
-        el.disabled = false;
-        el.removeAttribute('disabled');
+        var el=document.getElementById(id);
+        if(!el) return;
+        el.checked = (val!==undefined && val!==null) ? Boolean(val) : def;
+        el.disabled=false; el.removeAttribute('disabled');
     }
     function sv(id, val, def) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        el.value    = (val !== undefined && val !== null) ? val : def;
-        el.disabled = false;
-        el.removeAttribute('disabled');
+        var el=document.getElementById(id);
+        if(!el) return;
+        el.value = (val!==undefined && val!==null) ? val : def;
+        el.disabled=false; el.removeAttribute('disabled');
     }
 
     sc('g-make_predictions', gs.make_predictions, true);
@@ -1869,219 +1872,267 @@ function populateGlobalForm(config) {
 }
 
 async function saveGlobalSettings() {
-    if (!_settingsCfg) _settingsCfg = {};
+    if(!_settingsCfg) _settingsCfg={};
+    function gc(id){ var el=document.getElementById(id); return el?el.checked:false; }
+    function gn(id,d){ var el=document.getElementById(id); return el?(parseFloat(el.value)||d):d; }
+    function gs(id,d){ var el=document.getElementById(id); return (el&&el.value)?el.value:d; }
 
-    function gc(id) { var el = document.getElementById(id); return el ? el.checked : false; }
-    function gn(id, d) { var el = document.getElementById(id); return el ? (parseFloat(el.value) || d) : d; }
-    function gs(id, d) { var el = document.getElementById(id); return (el && el.value) ? el.value : d; }
-
-    _settingsCfg.global_settings = {
+    _settingsCfg.global_settings={
         make_predictions: gc('g-make_predictions'),
         follow_raid:      gc('g-follow_raid'),
         claim_drops:      gc('g-claim_drops'),
         claim_moments:    gc('g-claim_moments'),
         watch_streak:     gc('g-watch_streak'),
         community_goals:  gc('g-community_goals'),
-        chat:             gs('g-chat', 'ONLINE'),
-        bet: {
-            strategy:       gs('g-strategy', 'SMART'),
-            percentage:     gn('g-percentage', 5),
-            percentage_gap: gn('g-percentage_gap', 20),
-            max_points:     gn('g-max_points', 50000),
-            minimum_points: gn('g-minimum_points', 0),
+        chat:             gs('g-chat','ONLINE'),
+        bet:{
+            strategy:       gs('g-strategy','SMART'),
+            percentage:     gn('g-percentage',5),
+            percentage_gap: gn('g-percentage_gap',20),
+            max_points:     gn('g-max_points',50000),
+            minimum_points: gn('g-minimum_points',0),
             stealth_mode:   gc('g-stealth_mode'),
-            delay_mode:     gs('g-delay_mode', 'FROM_END'),
-            delay:          gn('g-delay', 6),
+            delay_mode:     gs('g-delay_mode','FROM_END'),
+            delay:          gn('g-delay',6),
             filter_condition: null,
         },
     };
-
     try {
-        var res = await saveConfig(_settingsCfg);
-        showSettingsToast(res.message || '✓ Saved');
-    } catch (err) {
-        showSettingsToast('Save failed: ' + err.message, true);
+        var res=await saveConfig(_settingsCfg);
+        showSettingsToast(res.message||'✓ Saved');
+    } catch(err) {
+        showSettingsToast('Save failed: '+err.message, true);
     }
 }
 
-/* [C] Render streamer cards (auto-populated from analytics if list was empty) */
+/* [2] Streamer cards use proper .toggle-switch labels */
 function renderStreamersSettings(config) {
-    var container = document.getElementById('streamers-settings-list');
-    if (!container) return;
-
-    var streamers = (config && config.streamers) ? config.streamers : [];
-    var isAutofilled = !window._settingsCfgFromDisk;  // flag set by server — not used here
-
-    if (!streamers.length) {
-        container.innerHTML = '<div class="settings-loading">No streamers found. Add one above or run the miner first so analytics files are created.</div>';
+    var container=document.getElementById('streamers-settings-list');
+    if(!container) return;
+    var streamers=(config&&config.streamers)?config.streamers:[];
+    if(!streamers.length){
+        container.innerHTML='<div class="settings-loading">No streamers found. Add one above or check config.json.</div>';
         return;
     }
-
-    container.innerHTML = '';
-    var STRATEGIES = ['SMART','MOST_VOTED','HIGH_ODDS','PERCENTAGE','SMART_MONEY','NUMBER_1','NUMBER_2'];
+    container.innerHTML='';
+    var STRATEGIES=['SMART','MOST_VOTED','HIGH_ODDS','PERCENTAGE','SMART_MONEY','NUMBER_1','NUMBER_2'];
 
     streamers.forEach(function(s) {
-        var sc  = (s.settings) ? s.settings : {};
-        var bet = (sc.bet) ? sc.bet : {};
-        var enabled = s.enabled !== false;
+        var sc  = s.settings||{};
+        var bet = sc.bet||{};
+        var enabled = s.enabled!==false;
 
-        var card = document.createElement('div');
-        card.className    = 'streamer-setting-card';
-        card.dataset.name = s.username;
+        var card=document.createElement('div');
+        card.className='streamer-setting-card';
+        card.dataset.name=s.username;
 
-        var stratOpts = STRATEGIES.map(function(v) {
-            return '<option value="' + v + '"' + (bet.strategy === v ? ' selected' : '') + '>' + v + '</option>';
+        var stratOpts=STRATEGIES.map(function(v){
+            return '<option value="'+v+'"'+(bet.strategy===v?' selected':'')+'>'+v+'</option>';
         }).join('');
 
-        card.innerHTML =
-          '<div class="stc-header">' +
-            '<div class="stc-title">' +
-              '<span class="status-dot ' + (enabled ? 'online' : 'offline') + ' stc-enabled-dot"></span>' +
-              '<strong class="stc-name">' + s.username + '</strong>' +
-            '</div>' +
-            '<div class="stc-actions">' +
-              '<label class="stg-toggle compact">' +
-                '<input type="checkbox" class="stc-enabled"' + (enabled ? ' checked' : '') + '>' +
-                '<span class="toggle-track"></span>' +
-                '<span class="stg-lbl">Enabled</span>' +
-              '</label>' +
-              '<button class="btn btn-sm stc-chart-btn" title="View chart"><i class="fas fa-chart-line"></i></button>' +
-              '<button class="btn btn-sm btn-danger stc-remove" title="Remove"><i class="fas fa-trash"></i></button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="stc-body">' +
-            '<label class="stg-toggle">' +
-              '<input type="checkbox" class="stc-use-global"' + (!s.settings ? ' checked' : '') + '>' +
-              '<span class="toggle-track"></span>' +
-              '<span class="stg-lbl">Use global defaults (no individual override)</span>' +
-            '</label>' +
-            '<div class="stc-individual' + (!s.settings ? ' is-hidden' : '') + '">' +
-              '<div class="settings-fields compact">' +
-                '<label class="stg-toggle compact"><input type="checkbox" class="stc-make_predictions"' + (sc.make_predictions !== false ? ' checked' : '') + '><span class="toggle-track"></span><span class="stg-lbl">Make Predictions</span></label>' +
-                '<label class="stg-toggle compact"><input type="checkbox" class="stc-follow_raid"' + (sc.follow_raid !== false ? ' checked' : '') + '><span class="toggle-track"></span><span class="stg-lbl">Follow Raids</span></label>' +
-                '<label class="stg-toggle compact"><input type="checkbox" class="stc-claim_drops"' + (sc.claim_drops !== false ? ' checked' : '') + '><span class="toggle-track"></span><span class="stg-lbl">Claim Drops</span></label>' +
-                '<label class="stg-toggle compact"><input type="checkbox" class="stc-watch_streak"' + (sc.watch_streak !== false ? ' checked' : '') + '><span class="toggle-track"></span><span class="stg-lbl">Watch Streak</span></label>' +
-                '<div class="stg-field"><label class="stg-field-label">Strategy</label><select class="input stg-select stc-strategy">' + stratOpts + '</select></div>' +
-                '<div class="stg-field"><label class="stg-field-label">Max Points</label><input class="input stc-max_points" type="number" min="0" value="' + (bet.max_points !== undefined ? bet.max_points : 50000) + '"></div>' +
-                '<div class="stg-field"><label class="stg-field-label">Min to Bet</label><input class="input stc-minimum_points" type="number" min="0" value="' + (bet.minimum_points !== undefined ? bet.minimum_points : 0) + '"></div>' +
-              '</div>' +
-              '<div class="stc-save-row"><button class="btn btn-primary btn-sm stc-save"><i class="fas fa-floppy-disk"></i> Save</button></div>' +
-            '</div>' +
+        // [2] Use .toggle-switch class (same as rest of site) instead of .stg-toggle
+        card.innerHTML=
+          '<div class="stc-header">'+
+            '<div class="stc-title">'+
+              '<strong class="stc-name">'+s.username+'</strong>'+
+            '</div>'+
+            '<div class="stc-actions">'+
+              // enabled toggle uses .toggle-switch
+              '<label class="toggle-switch compact" title="Enable/Disable streamer">'+
+                '<input type="checkbox" class="stc-enabled"'+(enabled?' checked':'')+'>'+
+                '<span class="toggle-track"></span>'+
+                '<span class="toggle-label">Enabled</span>'+
+              '</label>'+
+              '<button class="btn btn-sm stc-chart-btn" title="View chart"><i class="fas fa-chart-line"></i></button>'+
+              '<button class="btn btn-sm btn-danger stc-remove" title="Remove"><i class="fas fa-trash"></i></button>'+
+            '</div>'+
+          '</div>'+
+          '<div class="stc-body">'+
+            // use-global uses .toggle-switch
+            '<label class="toggle-switch" title="Use global defaults">'+
+              '<input type="checkbox" class="stc-use-global"'+(!s.settings?' checked':'')+'>'+
+              '<span class="toggle-track"></span>'+
+              '<span class="toggle-label">Use global defaults (no individual override)</span>'+
+            '</label>'+
+            '<div class="stc-individual'+(s.settings?'':' is-hidden')+'">'+
+              '<div class="settings-fields compact">'+
+                '<label class="toggle-switch compact"><input type="checkbox" class="stc-make_predictions"'+(sc.make_predictions!==false?' checked':'')+'><span class="toggle-track"></span><span class="toggle-label">Make Predictions</span></label>'+
+                '<label class="toggle-switch compact"><input type="checkbox" class="stc-follow_raid"'+(sc.follow_raid!==false?' checked':'')+'><span class="toggle-track"></span><span class="toggle-label">Follow Raids</span></label>'+
+                '<label class="toggle-switch compact"><input type="checkbox" class="stc-claim_drops"'+(sc.claim_drops!==false?' checked':'')+'><span class="toggle-track"></span><span class="toggle-label">Claim Drops</span></label>'+
+                '<label class="toggle-switch compact"><input type="checkbox" class="stc-watch_streak"'+(sc.watch_streak!==false?' checked':'')+'><span class="toggle-track"></span><span class="toggle-label">Watch Streak</span></label>'+
+              '</div>'+
+              '<div class="settings-fields compact">'+
+                '<div class="stg-field"><label class="stg-field-label">Strategy</label><select class="input stg-select stc-strategy">'+stratOpts+'</select></div>'+
+                '<div class="stg-field"><label class="stg-field-label">Max Points</label><input class="input stc-max_points" type="number" min="0" value="'+(bet.max_points!==undefined?bet.max_points:50000)+'"></div>'+
+                '<div class="stg-field"><label class="stg-field-label">Min to Bet</label><input class="input stc-minimum_points" type="number" min="0" value="'+(bet.minimum_points!==undefined?bet.minimum_points:0)+'"></div>'+
+              '</div>'+
+              '<div class="stc-save-row"><button class="btn btn-primary btn-sm stc-save"><i class="fas fa-floppy-disk"></i> Save</button></div>'+
+            '</div>'+
           '</div>';
 
-        /* Chart button */
-        card.querySelector('.stc-chart-btn').onclick = function() {
-            navigate('#streamer/' + encodeURIComponent(s.username));
-        };
+        card.querySelector('.stc-chart-btn').onclick=function(){ navigate('#streamer/'+encodeURIComponent(s.username)); };
 
-        /* Use-global toggle */
-        card.querySelector('.stc-use-global').onchange = function() {
+        card.querySelector('.stc-use-global').onchange=function(){
             card.querySelector('.stc-individual').classList.toggle('is-hidden', this.checked);
         };
 
-        /* Enable/disable */
-        card.querySelector('.stc-enabled').onchange = async function() {
-            var res = await apiPatchStreamer(s.username, {enabled: this.checked});
-            if (res.status === 'ok') {
-                showSettingsToast(s.username + ': ' + (this.checked ? 'enabled' : 'disabled'));
-                var dot = card.querySelector('.stc-enabled-dot');
-                if (dot) { dot.classList.toggle('online', this.checked); dot.classList.toggle('offline', !this.checked); }
+        card.querySelector('.stc-enabled').onchange=async function(){
+            var res=await apiPatchStreamer(s.username, {enabled:this.checked});
+            if(res.status==='ok'){
+                showSettingsToast(s.username+': '+(this.checked?'enabled':'disabled'));
                 showRestartBanner();
+                // [1] Reload sidebar immediately
+                state.streamersList=await (async function(){ var r=await fetch('./streamers'); return r.json(); }());
+                renderSidebar();
             } else {
-                showSettingsToast(res.error || 'Failed', true);
-                this.checked = !this.checked;
+                showSettingsToast(res.error||'Failed', true);
+                this.checked=!this.checked;
             }
         };
 
-        /* Remove */
-        card.querySelector('.stc-remove').onclick = async function() {
-            if (!confirm('Remove "' + s.username + '"? This triggers a ~10s restart.')) return;
-            var res = await apiRemoveStreamer(s.username);
-            if (res.status === 'ok') {
+        card.querySelector('.stc-remove').onclick=async function(){
+            if(!confirm('Remove "'+s.username+'"? This triggers a ~10s restart.')) return;
+            var res=await apiRemoveStreamer(s.username);
+            if(res.status==='ok'){
                 showSettingsToast(res.message);
                 showRestartBanner();
-                card.parentNode && card.parentNode.removeChild(card);
+                card.parentNode&&card.parentNode.removeChild(card);
+                // [1] Reload sidebar so removed streamer disappears
+                state.streamersList=await (async function(){ var r=await fetch('./streamers'); return r.json(); }());
+                renderSidebar();
             } else {
-                showSettingsToast(res.error || 'Failed', true);
+                showSettingsToast(res.error||'Failed', true);
             }
         };
 
-        /* Save per-streamer settings */
-        card.querySelector('.stc-save').onclick = async function() {
-            var useGlobal = card.querySelector('.stc-use-global').checked;
-            var patch = useGlobal ? {settings: null} : {
-                settings: {
-                    make_predictions: card.querySelector('.stc-make_predictions').checked,
-                    follow_raid:      card.querySelector('.stc-follow_raid').checked,
-                    claim_drops:      card.querySelector('.stc-claim_drops').checked,
-                    watch_streak:     card.querySelector('.stc-watch_streak').checked,
-                    bet: {
-                        strategy:       card.querySelector('.stc-strategy').value,
-                        max_points:     parseFloat(card.querySelector('.stc-max_points').value) || 50000,
-                        minimum_points: parseFloat(card.querySelector('.stc-minimum_points').value) || 0,
-                    },
+        card.querySelector('.stc-save').onclick=async function(){
+            var useGlobal=card.querySelector('.stc-use-global').checked;
+            var patch=useGlobal?{settings:null}:{settings:{
+                make_predictions: card.querySelector('.stc-make_predictions').checked,
+                follow_raid:      card.querySelector('.stc-follow_raid').checked,
+                claim_drops:      card.querySelector('.stc-claim_drops').checked,
+                watch_streak:     card.querySelector('.stc-watch_streak').checked,
+                bet:{
+                    strategy:       card.querySelector('.stc-strategy').value,
+                    max_points:     parseFloat(card.querySelector('.stc-max_points').value)||50000,
+                    minimum_points: parseFloat(card.querySelector('.stc-minimum_points').value)||0,
                 },
-            };
-            var res = await apiPatchStreamer(s.username, patch);
-            if (res.status === 'ok') showSettingsToast(s.username + ': saved ✓');
-            else showSettingsToast(res.error || 'Save failed', true);
+            }};
+            var res=await apiPatchStreamer(s.username, patch);
+            if(res.status==='ok') showSettingsToast(s.username+': saved ✓');
+            else showSettingsToast(res.error||'Save failed', true);
         };
 
         container.appendChild(card);
     });
 }
 
-/* ─── [K] Log level filter ───────────────────────────────────────────────── */
-(function initLogFilter() {
-    var logHeader = document.querySelector('.log-header');
-    if (!logHeader || logHeader.querySelector('.log-level-filter')) return;
+/* ─── [6] Performant Log — virtual buffer, max 500 lines, rAF scroll ─────── */
+(function patchLog() {
+    var LOG_MAX_LINES = 500;
+    var _logLines     = [];  // in-memory buffer
+    var _rafPending   = false;
 
-    var select = document.createElement('select');
-    select.className = 'log-level-filter';
-    select.title     = 'Log level filter';
-    select.innerHTML =
-        '<option value="1">INFO+</option>' +
-        '<option value="0">DEBUG (all)</option>' +
-        '<option value="2">WARNING+</option>' +
-        '<option value="3">ERROR only</option>';
-    logHeader.appendChild(select);
-
-    var RANKS = {DEBUG: 0, INFO: 1, WARNING: 2, ERROR: 3, WARN: 2};
-
-    select.onchange = function() {
-        var min = parseInt(this.value, 10);
+    function _flushLog() {
+        _rafPending = false;
         var pre = document.getElementById('log-content');
         if (!pre) return;
-        pre.querySelectorAll('.log-line').forEach(function(el) {
-            el.hidden = (parseInt(el.dataset.rank, 10) || 1) < min;
+        // Trim buffer
+        if (_logLines.length > LOG_MAX_LINES) {
+            _logLines = _logLines.slice(_logLines.length - LOG_MAX_LINES);
+        }
+        var atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 60;
+        pre.textContent = _logLines.join('\n');
+        if (atBottom) pre.scrollTop = pre.scrollHeight;
+    }
+
+    function _appendLog(text) {
+        if (!text) return;
+        var newLines = text.split('\n');
+        // don't add empty trailing line
+        if (newLines[newLines.length - 1] === '') newLines.pop();
+        _logLines = _logLines.concat(newLines);
+        if (!_rafPending) {
+            _rafPending = true;
+            requestAnimationFrame(_flushLog);
+        }
+    }
+
+    // Patch initLog to use our buffer
+    var _logActive = false;
+    var _logAuto   = true;
+    var _logIdx    = 0;
+
+    async function _poll() {
+        if (!_logActive) return;
+        try {
+            var r = await fetch('/log?lastIndex=' + _logIdx);
+            if (r.ok) {
+                var txt = await r.text();
+                if (txt) { _appendLog(txt); _logIdx += txt.length; }
+            }
+        } catch (e) {}
+        if (_logAuto && _logActive) setTimeout(_poll, 2000);  // 2s instead of 1s
+    }
+
+    // Lazy open — only start polling when log is first opened
+    var logChk = document.getElementById('log');
+    if (logChk) {
+        // Remove original listener by cloning
+        var clone = logChk.cloneNode(true);
+        logChk.parentNode.replaceChild(clone, logChk);
+        clone.addEventListener('change', function() {
+            _logActive = this.checked;
+            var box = document.getElementById('log-box');
+            if (box) box.hidden = !_logActive;
+            if (_logActive) _poll();
+            localStorage.setItem('cpm-log', _logActive ? '1' : '0');
         });
-    };
+        // Restore saved state
+        if (localStorage.getItem('cpm-log') === '1') {
+            clone.checked  = true;
+            _logActive     = true;
+            var box        = document.getElementById('log-box');
+            if (box) box.hidden = false;
+            _poll();
+        }
+    }
 
-    /* Tag existing and future lines */
-    var pre = document.getElementById('log-content');
-    if (!pre) return;
-
-    function tagLines() {
-        var LEVEL_RE = /\b(DEBUG|INFO|WARNING|WARN|ERROR)\b/;
-        var raw = pre.textContent || '';
-        if (!raw.trim() || pre.querySelector('.log-line')) return;
-        var lines = raw.split('\n');
-        pre.innerHTML = '';
-        lines.forEach(function(line) {
-            var span   = document.createElement('span');
-            span.className = 'log-line';
-            var m = line.match(LEVEL_RE);
-            var lv = m ? m[1] : 'INFO';
-            span.dataset.rank = RANKS[lv] !== undefined ? RANKS[lv] : 1;
-            span.textContent  = line + '\n';
-            pre.appendChild(span);
+    // Pause/resume button
+    var pauseBtn = document.getElementById('auto-update-log');
+    if (pauseBtn) {
+        var pbClone = pauseBtn.cloneNode(true);
+        pauseBtn.parentNode.replaceChild(pbClone, pauseBtn);
+        pbClone.addEventListener('click', function() {
+            _logAuto = !_logAuto;
+            this.textContent = _logAuto ? '⏸️' : '▶️';
+            if (_logAuto) _poll();
         });
     }
 
-    var obs = new MutationObserver(function() {
-        obs.disconnect();
-        tagLines();
-        obs.observe(pre, {childList: true, characterData: true, subtree: true});
-    });
-    obs.observe(pre, {childList: true, characterData: true, subtree: true});
+    // Level filter dropdown
+    var logHeader = document.querySelector('.log-header');
+    if (logHeader && !logHeader.querySelector('.log-level-filter')) {
+        var select = document.createElement('select');
+        select.className = 'log-level-filter';
+        select.title     = 'Log level filter';
+        select.innerHTML =
+            '<option value="1">INFO+</option>' +
+            '<option value="0">ALL</option>' +
+            '<option value="2">WARNING+</option>' +
+            '<option value="3">ERROR only</option>';
+        select.onchange = function() {
+            var min   = parseInt(this.value, 10);
+            var RANKS = {DEBUG:0, INFO:1, WARNING:2, WARN:2, ERROR:3};
+            var LEVEL_RE = /\b(DEBUG|INFO|WARNING|WARN|ERROR)\b/;
+            var filtered = _logLines.filter(function(line) {
+                var m = line.match(LEVEL_RE);
+                var lv = m ? m[1] : 'INFO';
+                return (RANKS[lv] !== undefined ? RANKS[lv] : 1) >= min;
+            });
+            var pre = document.getElementById('log-content');
+            if (pre) pre.textContent = filtered.join('\n');
+        };
+        logHeader.appendChild(select);
+    }
 }());

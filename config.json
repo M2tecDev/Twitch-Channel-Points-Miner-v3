@@ -1,7 +1,8 @@
 {
   "miner": {
     "username": "your-twitch-username",
-    "password": null,
+    "password": "STRONG_PASS",
+    "settings_password": "STRONG_PASS",
     "claim_drops_startup": false,
     "enable_analytics": true,
     "disable_ssl_cert_verification": false,
