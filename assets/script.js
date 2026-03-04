@@ -1,6 +1,6 @@
-// v2
+// v3
 // ============================================================
-//  Twitch CPM v3 — script.js   (full rewrite)
+//  Twitch CPM v3 — script.js   (patched: all UI bugs fixed)
 //
 //  Architecture:
 //  ─ Hash-based SPA router  (#dashboard · #streamer/name · #compare)
@@ -43,6 +43,8 @@ const state = {
     theme:          'gold',
     startDate:      null,           // Date
     endDate:        null,           // Date
+    statusMap:      {},              // streamer → {is_online, channel_points, last_activity}
+    preloadDone:    false,           // preloadStreakData gate
 };
 
 // ── Per-slot chart instances ──────────────────────────────────
@@ -161,7 +163,8 @@ function weeklyAgg(series) {
         counts[dow]++;
     });
 
-    return totals.map((t, i) => counts[i] > 0 ? Math.round(t / counts[i]) : 0);
+    // Clamp negatives to 0 — negative avg gain days are not meaningful to display
+    return totals.map((t, i) => counts[i] > 0 ? Math.max(0, Math.round(t / counts[i])) : 0);
 }
 
 /**
@@ -483,7 +486,36 @@ function renderSidebar() {
 
     // Scroll active item into view
     ul.querySelector('.is-active')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Status dots — rendered inline, no monkey-patch needed
+    ul.querySelectorAll('li[data-name]').forEach(li => {
+        const rawName  = li.dataset.name || '';
+        const clean    = rawName.replace('.json', '');
+        const info     = state.statusMap[clean] || state.statusMap[rawName];
+        const existing = li.querySelector('.status-dot');
+        if (existing) existing.remove();
+        if (!info) return;
+        const dot = document.createElement('span');
+        dot.className = 'status-dot ' + (info.is_online ? 'online' : 'offline');
+        dot.title = info.is_online ? 'Online' : 'Offline';
+        const a = li.querySelector('a');
+        if (a) a.insertBefore(dot, a.firstChild);
+    });
 }
+
+// ── Status polling ────────────────────────────────────────────
+async function fetchStatus() {
+    try {
+        const r = await fetch('./status');
+        if (r.ok) {
+            const fresh = await r.json();
+            Object.assign(state.statusMap, fresh);
+            renderSidebar();
+        }
+    } catch(e) {}
+}
+setInterval(fetchStatus, 30_000);
+fetchStatus();
 
 // ─────────────────────────────────────────────────────────────
 //  ROUTER
@@ -491,53 +523,20 @@ function renderSidebar() {
 
 function parseRoute() {
     const h = location.hash || '#dashboard';
-    if (h.startsWith('#streamer/')) {
-        return { view: 'streamer', param: decodeURIComponent(h.slice(10)) };
-    }
-    if (h === '#compare') return { view: 'compare' };
+    if (h.startsWith('#streamer/')) return { view: 'streamer', param: decodeURIComponent(h.slice(10)) };
+    if (h === '#compare')  return { view: 'compare' };
+    if (h === '#bets')     return { view: 'bets' };
+    if (h === '#settings') return { view: 'settings' };
     return { view: 'dashboard' };
 }
 
-function navigate(path) {
-    location.hash = path;
-}
-
 function showView(id) {
-    ['view-dashboard','view-streamer','view-compare'].forEach(v => {
+    ['view-dashboard','view-streamer','view-compare','view-bets','view-settings'].forEach(v => {
         const el = document.getElementById(v);
         if (el) el.hidden = (v !== id);
     });
 }
 
-async function router() {
-    const route   = parseRoute();
-    const prevView = state.view;
-    state.view    = route.view;
-
-    // Clear compare selection when leaving compare view so tick icons
-    // don't bleed into dashboard or streamer sidebar
-    if (prevView === 'compare' && route.view !== 'compare') {
-        state.compareSet.clear();
-    }
-
-    // Update nav active state
-    document.querySelectorAll('.nav-link').forEach(a => {
-        a.classList.toggle('is-active', a.dataset.view === route.view);
-    });
-
-    // Show/hide compare hint in sidebar
-    const hint = document.getElementById('compare-hint');
-    if (hint) hint.hidden = (route.view !== 'compare');
-
-    clearTimeout(refreshTimer);
-
-    switch (route.view) {
-        case 'dashboard': await renderDashboard(); break;
-        case 'streamer':  await renderStreamer(route.param); break;
-        case 'compare':   await renderCompare(); break;
-    }
-    // renderSidebar() is called at the end of each view renderer — no double-call here
-}
 
 // ─────────────────────────────────────────────────────────────
 //  DASHBOARD VIEW
@@ -557,11 +556,14 @@ async function renderDashboard() {
     setText('ds-total', fmt(total));
     setText('ds-count', String(count));
 
-    // Tracking since: earliest last_activity (rough proxy)
+    // Last activity: most recent activity across all streamers
     if (state.streamersList.length > 0) {
-        const earliest = state.streamersList.reduce((m, s) =>
-            s.last_activity < m ? s.last_activity : m, state.streamersList[0].last_activity);
-        setText('ds-since', fmtDate(new Date(earliest)));
+        const latest = state.streamersList.reduce((m, s) =>
+            s.last_activity > m ? s.last_activity : m, state.streamersList[0].last_activity);
+        setText('ds-since', fmtDate(new Date(latest)));
+        // Fix label to match actual data (was "Tracking since" which was misleading)
+        const sinceLabel = document.querySelector('[for="ds-since"], .ds-since-label, [data-label="ds-since"]');
+        if (sinceLabel) sinceLabel.textContent = 'Last Activity';
     }
 
     // Count cached annotations as "events"
@@ -669,7 +671,7 @@ function renderActivityFeed() {
     const items = [];
     state.seriesCache.forEach((data, name) => {
         (data.annotations || []).forEach(a => {
-            items.push({ streamer: name.replace('.json',''), ts: a.x, label: a.label?.text || '—', y: a.y });
+            items.push({ streamer: name.replace('.json',''), ts: a.x, label: a.label?.text || '—', y: a.y, borderColor: a.borderColor || '' });
         });
     });
 
@@ -693,7 +695,14 @@ function renderActivityFeed() {
 
         const icon = document.createElement('div');
         icon.className = 'feed-icon';
-        icon.innerHTML = '<i class="fas fa-bolt" aria-hidden="true"></i>';
+        // FIX V3: use correct icon per event type based on annotation colour
+        const FEED_ICON_MAP = {
+            '#36b535': '<i class="fas fa-trophy" aria-hidden="true"></i>',   // WIN
+            '#ff4545': '<i class="fas fa-times-circle" aria-hidden="true"></i>', // LOSE
+            '#ffe045': '<i class="fas fa-bullseye" aria-hidden="true"></i>', // BET
+            '#45c1ff': '<i class="fas fa-fire" aria-hidden="true"></i>',     // STREAK
+        };
+        icon.innerHTML = FEED_ICON_MAP[item.borderColor] || '<i class="fas fa-bolt" aria-hidden="true"></i>';
 
         const content = document.createElement('div');
         content.className = 'feed-content';
@@ -799,6 +808,39 @@ async function renderStreamer(name) {
         refreshTimer = setTimeout(() => renderStreamer(name), 15_000);
     }
 
+    // Gear button → settings for this streamer (inline, no monkey-patch)
+    const oldGear = document.getElementById('btn-streamer-settings');
+    if (oldGear) oldGear.remove();
+    const heroActions = document.querySelector('.streamer-hero-actions');
+    if (heroActions && name) {
+        const gearBtn = document.createElement('button');
+        gearBtn.id        = 'btn-streamer-settings';
+        gearBtn.className = 'btn btn-sm';
+        gearBtn.title     = 'Settings for this streamer';
+        gearBtn.innerHTML = '<i class="fas fa-sliders"></i>';
+        gearBtn.onclick   = function() {
+            const clean = name.replace('.json', '');
+            navigate('#settings');
+            setTimeout(function() {
+                document.querySelectorAll('.stab').forEach(b => {
+                    const on = b.dataset.stab === 'streamers';
+                    b.classList.toggle('is-active', on);
+                    b.setAttribute('aria-selected', String(on));
+                });
+                document.querySelectorAll('.stab-panel').forEach(p => {
+                    p.hidden = (p.id !== 'stab-streamers');
+                });
+                const card = document.querySelector(`.streamer-setting-card[data-name="${clean}"]`);
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.classList.add('is-highlighted');
+                    setTimeout(() => card.classList.remove('is-highlighted'), 2500);
+                }
+            }, 350);
+        };
+        heroActions.insertBefore(gearBtn, heroActions.firstChild);
+    }
+
     renderSidebar(); // update streak badges
 }
 
@@ -876,39 +918,50 @@ function renderAnnotationTimeline(annotations) {
     const tl = document.getElementById('annotation-timeline');
     if (!tl) return;
 
-    if (annotations.length === 0) {
-        tl.innerHTML = '';
-        const empty = document.createElement('div');
-        empty.className = 'timeline-empty';
-        empty.innerHTML = '<i class="fas fa-calendar-xmark"></i><span>No events in selected range</span>';
-        tl.appendChild(empty);
+    const COLOR_META = {
+        '#36b535': { icon: '🏆', label: 'WIN',    cls: 'tl-win'    },
+        '#ff4545': { icon: '❌', label: 'LOSE',   cls: 'tl-lose'   },
+        '#ffe045': { icon: '🎯', label: 'BET',    cls: 'tl-bet'    },
+        '#45c1ff': { icon: '🔥', label: 'STREAK', cls: 'tl-streak' },
+    };
+
+    const valid = (annotations || []).filter(a => a && a.x && (a.borderColor || a.label?.text));
+    if (!valid.length) {
+        tl.innerHTML = '<div class="timeline-empty"><i class="fas fa-calendar-xmark"></i><span>No events in selected range</span></div>';
         return;
     }
 
-    const sorted = [...annotations].sort((a, b) => (b.x || 0) - (a.x || 0));
-    const frag = document.createDocumentFragment();
+    const sorted = [...valid].sort((a, b) => (b.x || 0) - (a.x || 0));
+    const frag   = document.createDocumentFragment();
 
     sorted.forEach(a => {
+        const meta = COLOR_META[a.borderColor] || { icon: '⚡', label: 'EVENT', cls: '' };
+
         const item = document.createElement('div');
-        item.className = 'timeline-item';
+        item.className = 'timeline-item ' + meta.cls;
 
         const dot = document.createElement('div');
-        dot.className = 'timeline-dot';
-        dot.setAttribute('aria-hidden', 'true');
+        dot.className  = 'timeline-dot';
+        dot.style.background = a.borderColor || 'var(--accent-b)';
 
         const body = document.createElement('div');
         body.className = 'timeline-body';
 
-        const time = document.createElement('div');
-        time.className = 'timeline-time';
-        time.textContent = a.x ? fmtTs(a.x) : '—';
+        const timeEl = document.createElement('div');
+        timeEl.className   = 'timeline-time';
+        timeEl.textContent = a.x ? fmtTs(a.x) : '—';
 
-        const label = document.createElement('div');
-        label.className = 'timeline-label';
-        label.textContent = a.label?.text || a.borderColor || '—';
+        const labelEl = document.createElement('div');
+        labelEl.className   = 'timeline-label';
+        labelEl.textContent = (a.label && a.label.text) ? a.label.text : meta.label;
 
-        body.appendChild(time);
-        body.appendChild(label);
+        const badge = document.createElement('span');
+        badge.className   = 'timeline-badge';
+        badge.textContent = meta.icon + ' ' + meta.label;
+
+        body.appendChild(timeEl);
+        body.appendChild(labelEl);
+        body.appendChild(badge);
         item.appendChild(dot);
         item.appendChild(body);
         frag.appendChild(item);
@@ -1103,14 +1156,29 @@ async function loadStreamers() {
  * Sequential with 150ms gaps to avoid flooding the server.
  */
 async function preloadStreakData() {
+    if (state.preloadDone) return;
+    state.preloadDone = true;
+
     const start = state.startDate || (() => {
         const d = new Date(); d.setDate(d.getDate() - DAYS_BACK); return d;
     })();
     const end = state.endDate || new Date();
 
+    // Enforce cache cap: evict oldest entries beyond 30
+    const CACHE_MAX = 30;
+
     for (const s of state.streamersList) {
         if (state.seriesCache.has(s.name)) continue;
+
+        // Evict oldest if over cap
+        if (state.seriesCache.size >= CACHE_MAX) {
+            const oldest = [...state.seriesCache.entries()]
+                .sort((a, b) => a[1].cachedAt - b[1].cachedAt)[0];
+            if (oldest) state.seriesCache.delete(oldest[0]);
+        }
+
         try {
+            // Store AbortController so it can be cancelled if needed
             const ac   = new AbortController();
             const data = await fetchStreamerData(s.name, start, end, ac.signal);
             state.seriesCache.set(s.name, {
@@ -1118,68 +1186,83 @@ async function preloadStreakData() {
                 annotations: (data.annotations || []).map((a, i) => ({ ...a, id: `a${i}` })),
                 cachedAt:    Date.now(),
             });
-            // Re-render sidebar after each batch so badges appear progressively
             renderSidebar();
-        } catch { /* ignore per-streamer errors — server may not have data yet */ }
-        // Small delay between requests — avoids flooding the server
+        } catch { /* ignore per-streamer errors */ }
+
         await new Promise(r => setTimeout(r, 150));
     }
+
+    // FIX V1: Always update ds-events + activity feed after preload,
+    // regardless of which view the user is currently in.
+    let eventCount = 0;
+    state.seriesCache.forEach(d => { eventCount += (d.annotations?.length || 0); });
+    setText('ds-events', String(eventCount));
+    renderActivityFeed();
+    renderSidebar();
 }
 
 // ─────────────────────────────────────────────────────────────
 //  LOG
 // ─────────────────────────────────────────────────────────────
 
-function initLog() {
-    let active     = false;
-    let autoUpdate = true;
-    let lastIdx    = 0;
-
-    async function poll() {
-        if (!active) return;
-        try {
-            const r = await fetch(`/log?lastIndex=${lastIdx}`);
-            if (r.ok) {
-                const txt = await r.text();
-                if (txt) {
-                    const pre = document.getElementById('log-content');
-                    if (pre) { pre.append(txt); pre.scrollTop = pre.scrollHeight; }
-                    lastIdx += txt.length;
-                }
-            }
-        } catch {}
-        if (autoUpdate && active) setTimeout(poll, 1000);
-    }
-
-    document.getElementById('log')?.addEventListener('change', function () {
-        active = this.checked;
-        const box = document.getElementById('log-box');
-        if (box) box.hidden = !active;
-        if (active) poll();
-        localStorage.setItem('cpm-log', active ? '1' : '0');
-    });
-
-    document.getElementById('auto-update-log')?.addEventListener('click', function () {
-        autoUpdate = !autoUpdate;
-        this.textContent = autoUpdate ? '⏸️' : '▶️';
-        if (autoUpdate) poll();
-    });
-
-    // Restore state
-    const saved = localStorage.getItem('cpm-log') === '1';
-    const logChk = document.getElementById('log');
-    if (saved && logChk) {
-        logChk.checked = true;
-        active = true;
-        const box = document.getElementById('log-box');
-        if (box) box.hidden = false;
-        poll();
-    }
-}
 
 // ─────────────────────────────────────────────────────────────
 //  BOOT
 // ─────────────────────────────────────────────────────────────
+
+
+// ─────────────────────────────────────────────────────────────
+//  ROUTER
+// ─────────────────────────────────────────────────────────────
+
+
+
+function navigate(path) {
+    location.hash = path;
+}
+
+async function router() {
+    const route    = parseRoute();
+    const prevView = state.view;
+    state.view     = route.view;
+
+    // Set data attribute on shell for CSS-driven layout tweaks
+    const shell = document.querySelector('.app-shell');
+    if (shell) shell.dataset.currentView = route.view;
+
+    // Clear compare selection when leaving compare view
+    if (prevView === 'compare' && route.view !== 'compare') {
+        state.compareSet.clear();
+    }
+
+    // Update nav active state
+    document.querySelectorAll('.nav-link').forEach(a => {
+        a.classList.toggle('is-active', a.dataset.view === route.view);
+    });
+
+    // Show/hide compare hint in sidebar
+    const hint = document.getElementById('compare-hint');
+    if (hint) hint.hidden = (route.view !== 'compare');
+
+    clearTimeout(refreshTimer);
+
+    switch (route.view) {
+        case 'dashboard':
+            document.title = 'Overview — CPM v3';
+            await renderDashboard(); break;
+        case 'streamer':
+            await renderStreamer(route.param); break;
+        case 'compare':
+            document.title = 'Compare — CPM v3';
+            await renderCompare(); break;
+        case 'bets':
+            document.title = 'Bet History — CPM v3';
+            await renderBets(); break;
+        case 'settings':
+            document.title = 'Settings — CPM v3';
+            await renderSettings(); break;
+    }
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
 
@@ -1213,7 +1296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Kick off router ──────────────────────
     await router();
-    window.addEventListener('hashchange', () => router());
+    window.addEventListener('hashchange', function() { router(); });
 
     // Background-fetch series for all streamers so streak badges
     // are visible immediately — fire-and-forget (no await)
@@ -1360,8 +1443,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Back button ───────────────────────────
     document.getElementById('back-btn')?.addEventListener('click', () => navigate('#dashboard'));
 
-    // ── Init log ──────────────────────────────
-    initLog();
 });
 /* ─── Safari-safe scroll ─────────────────────────────────────────────────── */
 function safeSmoothScroll(el, opts) {
@@ -1370,171 +1451,8 @@ function safeSmoothScroll(el, opts) {
     catch (_) { try { el.scrollIntoView(true); } catch (__) {} }
 }
 
-/* ─── weeklyAgg: clamp negatives to 0 ───────────────────────────────────── */
-if (typeof weeklyAgg === 'function') {
-    var _wkOrig = weeklyAgg;
-    weeklyAgg = function(series) {
-        var r = _wkOrig(series);
-        return r.map(function(v) { return Math.max(0, v || 0); });
-    };
-}
+;
 
-/* ─── Cache cap (max 30 entries) ─────────────────────────────────────────── */
-var _CACHE_MAX = 30;
-
-/* ─── preloadStreakData: run once, update events count after ─────────────── */
-state.preloadDone = false;
-if (typeof preloadStreakData === 'function') {
-    var _preloadOrig = preloadStreakData;
-    preloadStreakData = async function() {
-        if (state.preloadDone) return;
-        state.preloadDone = true;
-        await _preloadOrig();
-        if (state.view === 'dashboard') {
-            var eventCount = 0;
-            state.seriesCache.forEach(function(d) { eventCount += (d.annotations ? d.annotations.length : 0); });
-            var el = document.getElementById('ds-events');
-            if (el) el.textContent = String(eventCount);
-            if (typeof renderActivityFeed === 'function') renderActivityFeed();
-            renderSidebar();
-        }
-    };
-}
-
-/* ─── renderAnnotationTimeline ───────────────────────────────────────────── */
-if (typeof renderAnnotationTimeline === 'function') {
-    renderAnnotationTimeline = function(annotations) {
-        var tl = document.getElementById('annotation-timeline');
-        if (!tl) return;
-        var COLOR_META = {
-            '#36b535': {icon: '🏆', label: 'WIN',    cls: 'tl-win'},
-            '#ff4545': {icon: '❌', label: 'LOSE',   cls: 'tl-lose'},
-            '#ffe045': {icon: '🎯', label: 'BET',    cls: 'tl-bet'},
-            '#45c1ff': {icon: '🔥', label: 'STREAK', cls: 'tl-streak'},
-        };
-        var valid = (annotations || []).filter(function(a) {
-            return a && a.x && (a.borderColor || (a.label && a.label.text));
-        });
-        if (!valid.length) {
-            tl.innerHTML = '<div class="timeline-empty"><i class="fas fa-calendar-xmark"></i><span>No events in selected range</span></div>';
-            return;
-        }
-        var sorted = valid.slice().sort(function(a, b) { return (b.x||0) - (a.x||0); });
-        var frag = document.createDocumentFragment();
-        sorted.forEach(function(a) {
-            var meta = COLOR_META[a.borderColor] || {icon: '⚡', label: 'EVENT', cls: ''};
-            var item = document.createElement('div');
-            item.className = 'timeline-item ' + meta.cls;
-            var dot = document.createElement('div');
-            dot.className = 'timeline-dot';
-            dot.style.background = a.borderColor || 'var(--accent-b)';
-            var body = document.createElement('div');
-            body.className = 'timeline-body';
-            var timeEl = document.createElement('div');
-            timeEl.className = 'timeline-time';
-            timeEl.textContent = a.x ? fmtTs(a.x) : '—';
-            var labelEl = document.createElement('div');
-            labelEl.className = 'timeline-label';
-            labelEl.textContent = (a.label && a.label.text) ? a.label.text : meta.label;
-            var badge = document.createElement('span');
-            badge.className = 'timeline-badge';
-            badge.textContent = meta.icon + ' ' + meta.label;
-            body.appendChild(timeEl);
-            body.appendChild(labelEl);
-            body.appendChild(badge);
-            item.appendChild(dot);
-            item.appendChild(body);
-            frag.appendChild(item);
-        });
-        tl.innerHTML = '';
-        tl.appendChild(frag);
-    };
-}
-
-/* ─── parseRoute / showView / router overrides ───────────────────────────── */
-var _pRouteOrig = parseRoute;
-parseRoute = function() {
-    var h = location.hash || '#dashboard';
-    if (h === '#bets')     return {view: 'bets'};
-    if (h === '#settings') return {view: 'settings'};
-    return _pRouteOrig();
-};
-
-var _showViewOrig = showView;
-showView = function(id) {
-    ['view-dashboard','view-streamer','view-compare','view-bets','view-settings'].forEach(function(v) {
-        var el = document.getElementById(v);
-        if (el) el.hidden = (v !== id);
-    });
-};
-
-router = async function() {
-    var route    = parseRoute();
-    var prevView = state.view;
-    state.view   = route.view;
-
-    var shell = document.querySelector('.app-shell');
-    if (shell) shell.dataset.currentView = route.view;
-
-    if (prevView === 'compare' && route.view !== 'compare') state.compareSet.clear();
-
-    document.querySelectorAll('.nav-link').forEach(function(a) {
-        a.classList.toggle('is-active', a.dataset.view === route.view);
-    });
-    var hint = document.getElementById('compare-hint');
-    if (hint) hint.hidden = (route.view !== 'compare');
-
-    clearTimeout(refreshTimer);
-
-    switch (route.view) {
-        case 'dashboard':
-            document.title = 'Overview — CPM v3';
-            await renderDashboard(); break;
-        case 'streamer':
-            await renderStreamer(route.param); break;
-        case 'compare':
-            document.title = 'Compare — CPM v3';
-            await renderCompare(); break;
-        case 'bets':
-            document.title = 'Bet History — CPM v3';
-            await renderBets(); break;
-        case 'settings':
-            document.title = 'Settings — CPM v3';
-            await renderSettings(); break;
-    }
-};
-
-/* ─── Status polling (no false-green dots) ───────────────────────────────── */
-state.statusMap = {};
-async function fetchStatus() {
-    try {
-        var r = await fetch('./status');
-        if (r.ok) { state.statusMap = await r.json(); renderSidebar(); }
-    } catch(e) {}
-}
-setInterval(fetchStatus, 30000);
-fetchStatus();
-
-var _sbOrig = renderSidebar;
-renderSidebar = function() {
-    _sbOrig();
-    var ul = document.getElementById('streamers-list');
-    if (!ul) return;
-    ul.querySelectorAll('li[data-name]').forEach(function(li) {
-        var name  = li.dataset.name;
-        var clean = name ? name.replace('.json', '') : '';
-        var info  = state.statusMap[clean] || state.statusMap[name];
-        if (!info) return;  // no dot if server didn't report this streamer
-        var old = li.querySelector('.status-dot');
-        if (old) old.parentNode.removeChild(old);
-        var dot = document.createElement('span');
-        dot.className = 'status-dot ' + (info.is_online ? 'online' : 'offline');
-        dot.title = info.is_online ? 'Online' : 'Offline';
-        var a = li.querySelector('a');
-        if (a && a.firstChild) a.insertBefore(dot, a.firstChild);
-        else if (a) a.appendChild(dot);
-    });
-};
 
 /* ─── Mobile: sidebar closes after streamer click ────────────────────────── */
 document.addEventListener('click', function(e) {
@@ -1546,42 +1464,7 @@ document.addEventListener('click', function(e) {
     }
 }, true);
 
-/* ─── Gear button in streamer hero ──────────────────────────────────────── */
-if (typeof renderStreamer === 'function') {
-    var _rsOrig = renderStreamer;
-    renderStreamer = async function(name) {
-        await _rsOrig(name);
-        var old = document.getElementById('btn-streamer-settings');
-        if (old && old.parentNode) old.parentNode.removeChild(old);
-        var actions = document.querySelector('.streamer-hero-actions');
-        if (!actions || !name) return;
-        var btn = document.createElement('button');
-        btn.id = 'btn-streamer-settings';
-        btn.className = 'btn btn-sm';
-        btn.title = 'Settings for this streamer';
-        btn.innerHTML = '<i class="fas fa-sliders"></i>';
-        btn.onclick = function() {
-            var clean = name.replace('.json','');
-            navigate('#settings');
-            setTimeout(function() {
-                document.querySelectorAll('.stab').forEach(function(b) {
-                    var on = b.dataset.stab === 'streamers';
-                    b.classList.toggle('is-active', on);
-                    b.setAttribute('aria-selected', String(on));
-                });
-                document.querySelectorAll('.stab-panel').forEach(function(p) { p.hidden = (p.id !== 'stab-streamers'); });
-                var card = document.querySelector('.streamer-setting-card[data-name="'+clean+'"]');
-                if (card) {
-                    safeSmoothScroll(card, {behavior:'smooth', block:'center'});
-                    card.classList.add('is-highlighted');
-                    setTimeout(function() { card.classList.remove('is-highlighted'); }, 2500);
-                }
-            }, 350);
-        };
-        if (actions.firstChild) actions.insertBefore(btn, actions.firstChild);
-        else actions.appendChild(btn);
-    };
-}
+
 
 /* ─── API helpers ────────────────────────────────────────────────────────── */
 async function fetchConfig() {
@@ -1594,57 +1477,51 @@ function _getSettingsPw() {
     return window._settingsPassword || '';
 }
 
+/**
+ * Parse JSON from a fetch Response.
+ * Throws a descriptive Error for non-2xx responses so callers
+ * can catch it and show a proper message in the UI.
+ */
+async function _apiJson(resp) {
+    let body = null;
+    try { body = await resp.json(); } catch(e) { /* non-JSON body (e.g. HTML 500) */ }
+    if (!resp.ok) {
+        const msg = (body && body.error) ? body.error : ('Server error ' + resp.status);
+        throw new Error(msg);
+    }
+    return body;
+}
+
 async function saveConfig(data) {
-    var r = await fetch('./config', {
+    const r = await fetch('./config', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Settings-Password': _getSettingsPw()
-        },
+        headers: { 'Content-Type': 'application/json', 'X-Settings-Password': _getSettingsPw() },
         body: JSON.stringify(data)
     });
-    return r.json();
+    return _apiJson(r);
 }
 async function apiAddStreamer(username) {
-    var r = await fetch('./config/streamer', {
+    const r = await fetch('./config/streamer', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Settings-Password': _getSettingsPw()
-        },
+        headers: { 'Content-Type': 'application/json', 'X-Settings-Password': _getSettingsPw() },
         body: JSON.stringify({username: username})
     });
-    return r.json();
+    return _apiJson(r);
 }
 async function apiRemoveStreamer(username) {
-    var r = await fetch('./config/streamer/' + encodeURIComponent(username), {
+    const r = await fetch('./config/streamer/' + encodeURIComponent(username), {
         method: 'DELETE',
         headers: {'X-Settings-Password': _getSettingsPw()}
     });
-    return r.json();
+    return _apiJson(r);
 }
 async function apiPatchStreamer(username, patch) {
-    var r = await fetch('./config/streamer/' + encodeURIComponent(username), {
+    const r = await fetch('./config/streamer/' + encodeURIComponent(username), {
         method: 'PATCH',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Settings-Password': _getSettingsPw()
-        },
+        headers: { 'Content-Type': 'application/json', 'X-Settings-Password': _getSettingsPw() },
         body: JSON.stringify(patch)
     });
-    return r.json();
-}
-async function apiAddStreamer(username) {
-    var r = await fetch('./config/streamer', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:username})});
-    return r.json();
-}
-async function apiRemoveStreamer(username) {
-    var r = await fetch('./config/streamer/'+encodeURIComponent(username), {method:'DELETE'});
-    return r.json();
-}
-async function apiPatchStreamer(username, patch) {
-    var r = await fetch('./config/streamer/'+encodeURIComponent(username), {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(patch)});
-    return r.json();
+    return _apiJson(r);
 }
 
 /* ─── Toast + restart banner ─────────────────────────────────────────────── */
@@ -1857,20 +1734,34 @@ async function renderSettings() {
 }
 
 async function handleAddStreamer() {
-    var inp=document.getElementById('new-streamer-input');
-    var val=inp ? inp.value.trim().toLowerCase() : '';
-    if(!val){ showSettingsToast('Enter a streamer username', true); return; }
-    var res=await apiAddStreamer(val);
-    if(res.status==='ok'){
-        showSettingsToast(res.message);
+    var inp = document.getElementById('new-streamer-input');
+    var val = inp ? inp.value.trim().toLowerCase() : '';
+    if (!val) { showSettingsToast('Enter a streamer username', true); return; }
+
+    // Disable button during request — prevent double-submit
+    var btn = document.getElementById('btn-add-streamer');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding…'; }
+
+    try {
+        var res = await apiAddStreamer(val);
+        // _apiJson throws on non-2xx, so we always have a valid response here
+        showSettingsToast(res.message || "'" + val + "' added ✓");
         showRestartBanner();
-        if(inp) inp.value='';
-        _settingsCfg=await fetchConfig();
-        renderStreamersSettings(_settingsCfg);
-        state.streamersList=await (async function(){ var r=await fetch('./streamers'); return r.json(); }());
-        renderSidebar();
-    } else {
-        showSettingsToast(res.error||'Failed', true);
+        if (inp) inp.value = '';
+        // Refresh config and re-render streamer list
+        try {
+            _settingsCfg = await fetchConfig();
+            renderStreamersSettings(_settingsCfg);
+        } catch(e) { console.warn('Config reload after add failed:', e); }
+        // Refresh sidebar streamer list
+        try {
+            var sr = await fetch('./streamers');
+            if (sr.ok) { state.streamersList = await sr.json(); renderSidebar(); }
+        } catch(e) { console.warn('Sidebar refresh failed:', e); }
+    } catch(err) {
+        showSettingsToast(err.message || 'Failed to add streamer', true);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plus"></i> Add'; }
     }
 }
 
@@ -1933,10 +1824,12 @@ async function saveGlobalSettings() {
         },
     };
     try {
-        var res=await saveConfig(_settingsCfg);
-        showSettingsToast(res.message||'✓ Saved');
+        var res = await saveConfig(_settingsCfg);
+        showSettingsToast(res.message || '✓ Global settings saved');
+        // Refresh config reference so subsequent saves see current state
+        try { _settingsCfg = await fetchConfig(); } catch(e) {}
     } catch(err) {
-        showSettingsToast('Save failed: '+err.message, true);
+        showSettingsToast('Save failed: ' + err.message, true);
     }
 }
 
@@ -2001,41 +1894,62 @@ function renderStreamersSettings(config) {
             card.querySelector('.stc-individual').classList.toggle('is-hidden', this.checked);
         };
         card.querySelector('.stc-enabled').onchange=async function(){
-            var res=await apiPatchStreamer(s.username, {enabled:this.checked});
-            if(res.status==='ok'){
-                showSettingsToast(s.username+': '+(this.checked?'enabled':'disabled'));
+            var newVal = this.checked;
+            var self = this;
+            try {
+                await apiPatchStreamer(s.username, {enabled: newVal});
+                showSettingsToast(s.username + ': ' + (newVal ? 'enabled' : 'disabled'));
                 showRestartBanner();
-                state.streamersList=await (async function(){ var r=await fetch('./streamers'); return r.json(); }());
-                renderSidebar();
-            } else { showSettingsToast(res.error||'Failed', true); this.checked=!this.checked; }
+                try {
+                    var sr = await fetch('./streamers');
+                    if (sr.ok) { state.streamersList = await sr.json(); renderSidebar(); }
+                } catch(e) {}
+            } catch(err) {
+                showSettingsToast(s.username + ': ' + (err.message || 'Failed'), true);
+                self.checked = !newVal; // Toggle zurücksetzen
+            }
         };
         card.querySelector('.stc-remove').onclick=async function(){
-            if(!confirm('Remove "'+s.username+'"? This triggers a ~10s restart.')) return;
-            var res=await apiRemoveStreamer(s.username);
-            if(res.status==='ok'){
-                showSettingsToast(res.message);
+            if (!confirm('Remove "' + s.username + '"? This triggers a ~10s restart.')) return;
+            var btn = this;
+            btn.disabled = true;
+            try {
+                var res = await apiRemoveStreamer(s.username);
+                showSettingsToast(res.message || s.username + ' removed ✓');
                 showRestartBanner();
-                card.parentNode&&card.parentNode.removeChild(card);
-                state.streamersList=await (async function(){ var r=await fetch('./streamers'); return r.json(); }());
-                renderSidebar();
-            } else { showSettingsToast(res.error||'Failed', true); }
+                if (card.parentNode) card.parentNode.removeChild(card);
+                try {
+                    var sr = await fetch('./streamers');
+                    if (sr.ok) { state.streamersList = await sr.json(); renderSidebar(); }
+                } catch(e) {}
+            } catch(err) {
+                showSettingsToast(s.username + ': ' + (err.message || 'Remove failed'), true);
+                btn.disabled = false;
+            }
         };
         card.querySelector('.stc-save').onclick=async function(){
-            var useGlobal=card.querySelector('.stc-use-global').checked;
-            var patch=useGlobal?{settings:null}:{settings:{
+            var btn = this;
+            btn.disabled = true;
+            var useGlobal = card.querySelector('.stc-use-global').checked;
+            var patch = useGlobal ? {settings: null} : {settings: {
                 make_predictions: card.querySelector('.stc-make_predictions').checked,
                 follow_raid:      card.querySelector('.stc-follow_raid').checked,
                 claim_drops:      card.querySelector('.stc-claim_drops').checked,
                 watch_streak:     card.querySelector('.stc-watch_streak').checked,
-                bet:{
+                bet: {
                     strategy:       card.querySelector('.stc-strategy').value,
-                    max_points:     parseFloat(card.querySelector('.stc-max_points').value)||50000,
-                    minimum_points: parseFloat(card.querySelector('.stc-minimum_points').value)||0,
+                    max_points:     parseFloat(card.querySelector('.stc-max_points').value) || 50000,
+                    minimum_points: parseFloat(card.querySelector('.stc-minimum_points').value) || 0,
                 },
             }};
-            var res=await apiPatchStreamer(s.username, patch);
-            if(res.status==='ok') showSettingsToast(s.username+': saved ✓');
-            else showSettingsToast(res.error||'Save failed', true);
+            try {
+                await apiPatchStreamer(s.username, patch);
+                showSettingsToast(s.username + ': saved ✓');
+            } catch(err) {
+                showSettingsToast(s.username + ': ' + (err.message || 'Save failed'), true);
+            } finally {
+                btn.disabled = false;
+            }
         };
         container.appendChild(card);
     });
@@ -2329,7 +2243,7 @@ function renderNotificationsTab(config) {
                 if (txt) { _appendLog(txt); _logIdx += txt.length; }
             }
         } catch (e) {}
-        if (_logAuto && _logActive) setTimeout(_poll, 2000);
+        if (_logAuto && _logActive) setTimeout(_poll, 1000);
     }
 
     var logChk = document.getElementById('log');

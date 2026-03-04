@@ -124,7 +124,7 @@ def _active_streamer_names():
     ]
     if configured:
         return set(configured)
-    return {f.strip(".json") for f in streamers_available()}
+    return {f.removesuffix(".json") for f in streamers_available()}
 
 
 def filter_datas(start_date, end_date, datas):
@@ -186,10 +186,14 @@ def read_json(streamer, return_response=True):
 
     if not os.path.exists(fpath):
         err = {"error": f"File '{streamer}' not found."}
-        logger.error(err["error"])
+        # Only log as ERROR for real HTTP requests — internal calls (return_response=False)
+        # happen routinely for new streamers that haven't collected data yet.
         if return_response:
+            logger.error(err["error"])
             return Response(json.dumps(err), status=404, mimetype="application/json")
-        return err
+        else:
+            logger.debug(err["error"])
+            return err
 
     try:
         with open(fpath, "r") as f:
@@ -220,7 +224,7 @@ def get_last_activity(streamer):
 def json_all():
     return Response(
         json.dumps([
-            {"name": s.strip(".json"), "data": read_json(s, return_response=False)}
+            {"name": s.removesuffix(".json"), "data": read_json(s, return_response=False)}
             for s in streamers_available()
         ]),
         status=200, mimetype="application/json",
@@ -232,15 +236,31 @@ def index(refresh=5, days_ago=7):
 
 
 def streamers():
-    """Only return enabled streamers — deleted/disabled ones won't show in sidebar."""
-    active = _active_streamer_names()
-    result = []
-    for s in sorted(streamers_available()):
-        if s.strip(".json") in active:
+    """
+    Return all enabled streamers from config — including newly added ones
+    that don't have a .json analytics file yet (they show 0 points).
+    Deleted/disabled streamers are excluded even if their file still exists.
+    """
+    config  = _load_or_default()
+    active  = _active_streamer_names()
+    on_disk = {s.removesuffix(".json") for s in streamers_available()}
+    result  = []
+    for entry in sorted(config.get("streamers", []), key=lambda e: e.get("username", "")):
+        name = entry.get("username", "").strip().lower()
+        if not name or name not in active:
+            continue
+        if name in on_disk:
             result.append({
-                "name":          s,
-                "points":        get_challenge_points(s),
-                "last_activity": get_last_activity(s),
+                "name":          f"{name}.json",
+                "points":        get_challenge_points(f"{name}.json"),
+                "last_activity": get_last_activity(f"{name}.json"),
+            })
+        else:
+            # Newly added streamer — no data file yet, show with zeroes
+            result.append({
+                "name":          f"{name}.json",
+                "points":        0,
+                "last_activity": 0,
             })
     return Response(json.dumps(result), status=200, mimetype="application/json")
 
@@ -271,7 +291,7 @@ def bets():
     active    = _active_streamer_names()
 
     for fname in streamers_available():
-        name = fname.strip(".json")
+        name = fname.removesuffix(".json")
         if name not in active:
             continue
         try:
@@ -312,7 +332,7 @@ def summary():
     active = _active_streamer_names()
 
     for fname in streamers_available():
-        name = fname.strip(".json")
+        name = fname.removesuffix(".json")
         if name not in active:
             continue
         try:
@@ -355,7 +375,7 @@ def summary():
 def _auto_fill_streamers(config: dict) -> None:
     if not config.get("streamers"):
         config["streamers"] = [
-            {"username": fname.strip(".json"), "enabled": True, "settings": None}
+            {"username": fname.removesuffix(".json"), "enabled": True, "settings": None}
             for fname in sorted(streamers_available())
         ]
 
@@ -373,10 +393,8 @@ def save_config():
     if not data:
         return Response(json.dumps({"error": "No JSON body"}), status=400, mimetype="application/json")
     try:
-        tmp_path = CONFIG_PATH + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, CONFIG_PATH)
         logger.info("config.json updated via web UI")
         return Response(json.dumps({"status": "ok", "message": "Saved. Hot-reload in ~2s."}),
                         status=200, mimetype="application/json")
@@ -391,13 +409,18 @@ def add_streamer():
         return Response(json.dumps({"error": "username required"}), status=400, mimetype="application/json")
     config   = _load_or_default()
     username = body["username"].strip().lower()
+    if not username:
+        return Response(json.dumps({"error": "username must not be empty"}), status=400, mimetype="application/json")
     if username in [s["username"] for s in config.get("streamers", [])]:
         return Response(json.dumps({"error": f"'{username}' already in list"}), status=409, mimetype="application/json")
     config.setdefault("streamers", []).append({"username": username, "enabled": True, "settings": body.get("settings")})
-    tmp_path = CONFIG_PATH + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, CONFIG_PATH)
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        logger.info(f"Streamer '{username}' added via web UI")
+    except Exception as e:
+        logger.error(f"Failed to save config after add_streamer: {e}")
+        return Response(json.dumps({"error": f"Failed to write config: {e}"}), status=500, mimetype="application/json")
     return Response(json.dumps({"status": "ok", "message": f"'{username}' added. Miner restarts in ~10s."}),
                     status=201, mimetype="application/json")
 
@@ -428,10 +451,13 @@ def patch_streamer(username: str):
             break
     if not found:
         return Response(json.dumps({"error": f"'{username}' not found"}), status=404, mimetype="application/json")
-    tmp_path = CONFIG_PATH + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, CONFIG_PATH)
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        logger.info(f"Streamer '{username}' patched via web UI")
+    except Exception as e:
+        logger.error(f"Failed to save config after patch_streamer: {e}")
+        return Response(json.dumps({"error": f"Failed to write config: {e}"}), status=500, mimetype="application/json")
     return Response(json.dumps({"status": "ok", "message": f"'{username}' updated."}),
                     status=200, mimetype="application/json")
 
@@ -445,10 +471,13 @@ def delete_streamer(username: str):
     config["streamers"] = [s for s in config.get("streamers", []) if s["username"] != username]
     if len(config["streamers"]) == before:
         return Response(json.dumps({"error": f"'{username}' not found"}), status=404, mimetype="application/json")
-    tmp_path = CONFIG_PATH + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, CONFIG_PATH)
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        logger.info(f"Streamer '{username}' deleted via web UI")
+    except Exception as e:
+        logger.error(f"Failed to save config after delete_streamer: {e}")
+        return Response(json.dumps({"error": f"Failed to write config: {e}"}), status=500, mimetype="application/json")
     return Response(json.dumps({"status": "ok", "message": f"'{username}' removed. Miner restarts in ~10s."}),
                     status=200, mimetype="application/json")
 
