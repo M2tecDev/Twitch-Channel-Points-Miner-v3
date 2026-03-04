@@ -1589,8 +1589,49 @@ async function fetchConfig() {
     if (!r.ok) throw new Error('GET /config: ' + r.status);
     return r.json();
 }
+function _getSettingsPw() {
+    // Passwort wird beim Entsperren in eine Variable gespeichert
+    return window._settingsPassword || '';
+}
+
 async function saveConfig(data) {
-    var r = await fetch('./config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+    var r = await fetch('./config', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Settings-Password': _getSettingsPw()
+        },
+        body: JSON.stringify(data)
+    });
+    return r.json();
+}
+async function apiAddStreamer(username) {
+    var r = await fetch('./config/streamer', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Settings-Password': _getSettingsPw()
+        },
+        body: JSON.stringify({username: username})
+    });
+    return r.json();
+}
+async function apiRemoveStreamer(username) {
+    var r = await fetch('./config/streamer/' + encodeURIComponent(username), {
+        method: 'DELETE',
+        headers: {'X-Settings-Password': _getSettingsPw()}
+    });
+    return r.json();
+}
+async function apiPatchStreamer(username, patch) {
+    var r = await fetch('./config/streamer/' + encodeURIComponent(username), {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Settings-Password': _getSettingsPw()
+        },
+        body: JSON.stringify(patch)
+    });
     return r.json();
 }
 async function apiAddStreamer(username) {
@@ -1697,6 +1738,7 @@ function _checkSettingsPassword(config, onSuccess) {
         if (inp.value === pw) {
             _settingsUnlocked = true;
             overlay.hidden = true;
+            window._settingsPassword = inp.value;
             onSuccess();
         } else {
             errMsg.hidden = false;

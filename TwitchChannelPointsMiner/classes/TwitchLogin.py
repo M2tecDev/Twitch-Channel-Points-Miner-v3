@@ -82,9 +82,6 @@ class TwitchLogin(object):
                 "user_blocks_read user_follows_edit user_read"
             )
         }
-        # login-fix
-        use_backup_flow = False
-        # use_backup_flow = True
         while True:
             logger.info("Trying the TV login method..")
 
@@ -168,17 +165,9 @@ class TwitchLogin(object):
                             f"Unknown TwitchAPI error code: {err_code}"
                         )
 
-            if use_backup_flow:
-                break
-
-        if use_backup_flow:
-            # self.set_token(self.login_flow_backup(password))
-            self.set_token(self.login_flow_backup())
-            return self.check_login()
-
         return False
 
-    def set_token(self, new_token):
+    def set_token(self, new_token: str) -> None:
         self.token = new_token
         self.session.headers.update({"Authorization": f"Bearer {self.token}"})
 
@@ -290,7 +279,7 @@ class TwitchLogin(object):
         self.shared_cookies = cookies_dict
         return cookies_dict.get("auth-token")
 
-    def check_login(self):
+    def check_login(self) -> bool:
         if self.login_check_result:
             return self.login_check_result
         if self.token is None:
@@ -299,33 +288,31 @@ class TwitchLogin(object):
         self.login_check_result = self.__set_user_id()
         return self.login_check_result
 
-    def save_cookies(self, cookies_file):
+    def save_cookies(self, cookies_file: str) -> None:
         logger.info("Saving cookies to your computer..")
         cookies_dict = self.session.cookies.get_dict()
-        # print(f"cookies_dict2pickle: {cookies_dict}")
         cookies_dict["auth-token"] = self.token
-        if "persistent" not in cookies_dict:  # saving user id cookies
+        if "persistent" not in cookies_dict:
             cookies_dict["persistent"] = self.user_id
 
-        # old way saves only 'auth-token' and 'persistent'
-        self.cookies = []
-        # cookies_dict = self.shared_cookies
-        # print(f"cookies_dict2pickle: {cookies_dict}")
-        for cookie_name, value in cookies_dict.items():
-            self.cookies.append({"name": cookie_name, "value": value})
-        # print(f"cookies2pickle: {self.cookies}")
-        pickle.dump(self.cookies, open(cookies_file, "wb"))
+        self.cookies = [
+            {"name": name, "value": value}
+            for name, value in cookies_dict.items()
+        ]
+        with open(cookies_file, "wb") as f:
+            pickle.dump(self.cookies, f)
 
-    def get_cookie_value(self, key):
+    def get_cookie_value(self, key: str) -> str | None:
         for cookie in self.cookies:
             if cookie["name"] == key:
                 if cookie["value"] is not None:
                     return cookie["value"]
         return None
 
-    def load_cookies(self, cookies_file):
+    def load_cookies(self, cookies_file: str) -> None:
         if os.path.isfile(cookies_file):
-            self.cookies = pickle.load(open(cookies_file, "rb"))
+            with open(cookies_file, "rb") as f:
+                self.cookies = pickle.load(f)
         else:
             raise WrongCookiesException("There must be a cookies file!")
 

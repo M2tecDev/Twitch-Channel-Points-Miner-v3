@@ -28,11 +28,25 @@ RESTART_DELAY = 10   # seconds to wait before restart on streamer-list change
 CRASH_DELAY   = 5    # seconds to wait before restart on crash
 
 
+def is_config_valid(config_path: str) -> bool:
+    """Prüft ob config.json valides JSON mit dem erwarteten Mindest-Schema ist."""
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        # Muss ein Dict sein und einen "miner"-Block mit "username" haben
+        if not isinstance(config, dict):
+            return False
+        if "miner" not in config or not config["miner"].get("username"):
+            return False
+        return True
+    except Exception:
+        return False
+
 def get_streamers_fingerprint(config_path: str):
     """
     Returns a stable tuple representing the current enabled streamer list.
     Only username + enabled flag are considered; settings changes are ignored.
-    Returns None if the file cannot be read.
+    Returns None if the file cannot be read or is invalid.
     """
     try:
         with open(config_path, "r", encoding="utf-8") as f:
@@ -92,6 +106,10 @@ try:
 
         if current_fp is None or current_fp == last_fingerprint:
             # File changed but streamer list is the same → hot-reload handled by run.py
+            continue
+
+        if not is_config_valid(CONFIG_PATH):
+            print("⚠  config.json hat ungültiges Format — Restart abgebrochen.", flush=True)
             continue
 
         print(f"🔄  Streamer list changed — restarting miner in {RESTART_DELAY}s…", flush=True)

@@ -67,7 +67,7 @@ class ClientIRC(SingleServerIRCBot):
 
         # also self._realname
         # if msg.startswith(f"@{self._nickname}"):
-        if mention != None and mention in msg.lower():
+        if mention is not None and mention in msg.lower():
             # nickname!username@nickname.tmi.twitch.tv
             nick = event.source.split("!", 1)[0]
             # chan = event.target

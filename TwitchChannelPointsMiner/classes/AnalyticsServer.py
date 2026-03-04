@@ -53,10 +53,43 @@ DEFAULT_CONFIG = {
     "streamers": [],
 }
 
+def _get_config_password() -> str:
+    """Reads the settings_password from config.json. Returns '' if not set."""
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        # Passwort kann auf zwei Ebenen stehen (Kompatibilität)
+        pw = cfg.get("miner", {}).get("settings_password") or cfg.get("settings_password", "")
+        return str(pw).strip() if pw else ""
+    except Exception:
+        return ""
+
+
+def _check_auth() -> bool:
+    """
+    Checks whether the request contains the correct password.
+    If no password is configured, everything is allowed.
+    Password is read ONLY from the HTTP header X-Settings-Password
+    to avoid consuming the request body before the route handler reads it.
+    """
+    pw = _get_config_password()
+    if not pw:
+        return True
+
+    header_pw = request.headers.get("X-Settings-Password", "")
+    return header_pw == pw
+
+
+def _auth_error() -> Response:
+    return Response(
+        json.dumps({"error": "Unauthorized. Wrong or missing settings_password."}),
+        status=401,
+        mimetype="application/json",
+    )
 
 # ── Helpers ───────────────────────────────────────────────────
 
-def _load_or_default():
+def _load_or_default() -> dict:
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -66,7 +99,7 @@ def _load_or_default():
     return copy.deepcopy(DEFAULT_CONFIG)
 
 
-def streamers_available():
+def streamers_available() -> list[str]:
     try:
         return [
             f for f in os.listdir(Settings.analytics_path)
@@ -319,7 +352,7 @@ def summary():
 
 # ── /config CRUD ──────────────────────────────────────────────
 
-def _auto_fill_streamers(config):
+def _auto_fill_streamers(config: dict) -> None:
     if not config.get("streamers"):
         config["streamers"] = [
             {"username": fname.strip(".json"), "enabled": True, "settings": None}
@@ -334,20 +367,25 @@ def get_config():
 
 
 def save_config():
+    if not _check_auth():
+        return _auth_error()
     data = request.get_json(force=True)
     if not data:
         return Response(json.dumps({"error": "No JSON body"}), status=400, mimetype="application/json")
     try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        tmp_path = CONFIG_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, CONFIG_PATH)
         logger.info("config.json updated via web UI")
         return Response(json.dumps({"status": "ok", "message": "Saved. Hot-reload in ~2s."}),
                         status=200, mimetype="application/json")
     except Exception as e:
         return Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
 
-
 def add_streamer():
+    if not _check_auth():
+        return _auth_error()
     body = request.get_json(force=True)
     if not body or "username" not in body:
         return Response(json.dumps({"error": "username required"}), status=400, mimetype="application/json")
@@ -356,13 +394,17 @@ def add_streamer():
     if username in [s["username"] for s in config.get("streamers", [])]:
         return Response(json.dumps({"error": f"'{username}' already in list"}), status=409, mimetype="application/json")
     config.setdefault("streamers", []).append({"username": username, "enabled": True, "settings": body.get("settings")})
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    tmp_path = CONFIG_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, CONFIG_PATH)
     return Response(json.dumps({"status": "ok", "message": f"'{username}' added. Miner restarts in ~10s."}),
                     status=201, mimetype="application/json")
 
 
-def patch_streamer(username):
+def patch_streamer(username: str):
+    if not _check_auth():
+        return _auth_error()
     body = request.get_json(force=True)
     if not body:
         return Response(json.dumps({"error": "No JSON body"}), status=400, mimetype="application/json")
@@ -386,21 +428,27 @@ def patch_streamer(username):
             break
     if not found:
         return Response(json.dumps({"error": f"'{username}' not found"}), status=404, mimetype="application/json")
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    tmp_path = CONFIG_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, CONFIG_PATH)
     return Response(json.dumps({"status": "ok", "message": f"'{username}' updated."}),
                     status=200, mimetype="application/json")
 
 
-def delete_streamer(username):
+def delete_streamer(username: str):
+    if not _check_auth():
+        return _auth_error()
     config = _load_or_default()
     _auto_fill_streamers(config)
     before = len(config.get("streamers", []))
     config["streamers"] = [s for s in config.get("streamers", []) if s["username"] != username]
     if len(config["streamers"]) == before:
         return Response(json.dumps({"error": f"'{username}' not found"}), status=404, mimetype="application/json")
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    tmp_path = CONFIG_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, CONFIG_PATH)
     return Response(json.dumps({"status": "ok", "message": f"'{username}' removed. Miner restarts in ~10s."}),
                     status=200, mimetype="application/json")
 
