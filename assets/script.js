@@ -1,3 +1,4 @@
+// v2
 // ============================================================
 //  Twitch CPM v3 — script.js   (full rewrite)
 //
@@ -1627,50 +1628,88 @@ function showRestartBanner() {
 var _settingsUnlocked = false;
 
 function _checkSettingsPassword(config, onSuccess) {
-    var pw = (config && config.settings_password) ? config.settings_password.trim() : '';
+    var pw = '';
+    if (config) {
+        if (config.miner && config.miner.settings_password) {
+            pw = String(config.miner.settings_password).trim();
+        } else if (config.settings_password) {
+            pw = String(config.settings_password).trim();
+        }
+    }
     if (!pw || _settingsUnlocked) { onSuccess(); return; }
 
-    var overlay = document.getElementById('settings-lock-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'settings-lock-overlay';
-        overlay.className = 'settings-lock-overlay';
-        overlay.innerHTML =
-            '<div class="settings-lock-box">' +
-              '<i class="fas fa-lock settings-lock-icon"></i>' +
-              '<h2 class="settings-lock-title">Settings locked</h2>' +
-              '<p class="settings-lock-hint">Enter the password to continue</p>' +
-              '<input class="input settings-lock-input" id="settings-lock-input" type="password" placeholder="Password…" autocomplete="current-password">' +
-              '<button class="btn btn-primary settings-lock-btn" id="settings-lock-btn"><i class="fas fa-unlock"></i> Unlock</button>' +
-              '<div class="settings-lock-error" id="settings-lock-error" hidden>Wrong password</div>' +
-            '</div>';
-        var sv = document.getElementById('view-settings');
-        if (sv) sv.insertBefore(overlay, sv.firstChild);
-    }
+    // Altes Overlay komplett entfernen
+    var oldOverlay = document.getElementById('settings-lock-overlay');
+    if (oldOverlay && oldOverlay.parentNode) oldOverlay.parentNode.removeChild(oldOverlay);
 
-    overlay.hidden = false;
+    // Neu aufbauen mit direkten Referenzen (kein innerHTML, kein getElementById)
+    var overlay = document.createElement('div');
+    overlay.id = 'settings-lock-overlay';
+    overlay.className = 'settings-lock-overlay';
+    // KEIN overlay.hidden = true hier!
 
-    var doCheck = function() {
-        var inp = document.getElementById('settings-lock-input');
-        if (inp && inp.value === pw) {
+    var box = document.createElement('div');
+    box.className = 'settings-lock-box';
+
+    var icon = document.createElement('i');
+    icon.className = 'fas fa-lock settings-lock-icon';
+
+    var titleEl = document.createElement('h2');
+    titleEl.className = 'settings-lock-title';
+    titleEl.textContent = 'Settings locked';
+
+    var hintEl = document.createElement('p');
+    hintEl.className = 'settings-lock-hint';
+    hintEl.textContent = 'Enter the password to continue';
+
+    var inp = document.createElement('input');
+    inp.className = 'input settings-lock-input';
+    inp.id = 'settings-lock-input';
+    inp.type = 'password';
+    inp.placeholder = 'Password\u2026';
+    inp.autocomplete = 'current-password';
+
+    var btn = document.createElement('button');
+    btn.className = 'btn btn-primary settings-lock-btn';
+    btn.id = 'settings-lock-btn';
+    btn.innerHTML = '<i class="fas fa-unlock"></i> Unlock';
+
+    var errMsg = document.createElement('div');
+    errMsg.className = 'settings-lock-error';
+    errMsg.id = 'settings-lock-error';
+    errMsg.textContent = 'Wrong password';
+    errMsg.hidden = true;
+
+    box.appendChild(icon);
+    box.appendChild(titleEl);
+    box.appendChild(hintEl);
+    box.appendChild(inp);
+    box.appendChild(btn);
+    box.appendChild(errMsg);
+    overlay.appendChild(box);
+
+    var sv = document.getElementById('view-settings');
+    if (sv) sv.insertBefore(overlay, sv.firstChild);
+
+    setTimeout(function() { inp.focus(); }, 50);
+
+    function doCheck() {
+        if (inp.value === pw) {
             _settingsUnlocked = true;
             overlay.hidden = true;
             onSuccess();
         } else {
-            var e = document.getElementById('settings-lock-error');
-            if (e) { e.hidden = false; setTimeout(function(){ e.hidden = true; }, 2000); }
-            var inp2 = document.getElementById('settings-lock-input');
-            if (inp2) { inp2.value = ''; inp2.focus(); }
+            errMsg.hidden = false;
+            setTimeout(function() { errMsg.hidden = true; }, 2000);
+            inp.value = '';
+            inp.focus();
         }
-    };
-
-    var btn = document.getElementById('settings-lock-btn');
-    if (btn) btn.onclick = doCheck;
-    var inp = document.getElementById('settings-lock-input');
-    if (inp) {
-        inp.onkeydown = function(e) { if (e.key === 'Enter') doCheck(); };
-        setTimeout(function(){ inp.focus(); }, 50);
     }
+
+    btn.addEventListener('click', doCheck);
+    inp.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); doCheck(); }
+    });
 }
 
 /* ─── VIEW: BETS ─────────────────────────────────────────────────────────── */

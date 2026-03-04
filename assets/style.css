@@ -948,6 +948,8 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   display: flex; align-items: center; justify-content: center;
   padding: 40px 16px;
 }
+/* hidden-Attribut muss display:flex überschreiben können */
+.settings-lock-overlay[hidden] { display: none !important; }
 .settings-lock-box {
   background: var(--bg-2); border: 1px solid var(--border);
   border-radius: var(--r-lg); padding: 40px 32px;
