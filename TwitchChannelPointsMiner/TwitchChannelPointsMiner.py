@@ -163,7 +163,7 @@ class TwitchChannelPointsMiner:
         logger.info(
             f"Twitch Channel Points Miner v3-{current_version} by Kori (base by rdavydov)"
         )
-        logger.info("https://github.com/rdavydov/Twitch-Channel-Points-Miner-v2")
+        logger.info("https://github.com/M2tecDev/Twitch-Channel-Points-Miner-v3")
 
         if github_version == "0.0.0":
             logger.error(
