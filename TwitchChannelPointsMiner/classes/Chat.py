@@ -60,7 +60,7 @@ class ClientIRC(SingleServerIRCBot):
         msg = event.arguments[0]
         mention = None
 
-        if Settings.disable_at_in_nickname is True:
+        if Settings.disable_at_in_nickname:
             mention = f"{self._nickname.lower()}"
         else:
             mention = f"@{self._nickname.lower()}"

@@ -96,7 +96,7 @@ class Twitch(object):
 
     # === STREAMER / STREAM / INFO === #
     def update_stream(self, streamer):
-        if streamer.stream.update_required() is True:
+        if streamer.stream.update_required():
             stream_info = self.get_stream_info(streamer)
             if stream_info is not None:
                 streamer.stream.update(
@@ -119,7 +119,7 @@ class Twitch(object):
                 if (
                     streamer.stream.game_name() is not None
                     and streamer.stream.game_id() is not None
-                    and streamer.settings.claim_drops is True
+                    and streamer.settings.claim_drops
                 ):
                     event_properties["game"] = streamer.stream.game_name()
                     event_properties["game_id"] = streamer.stream.game_id()
@@ -182,7 +182,7 @@ class Twitch(object):
         if time.time() < streamer.offline_at + 60:
             return
 
-        if streamer.is_online is False:
+        if not streamer.is_online:
             try:
                 self.get_spade_url(streamer)
                 self.update_stream(streamer)
@@ -217,7 +217,7 @@ class Twitch(object):
         has_next = True
         last_cursor = ""
         follows = []
-        while has_next is True:
+        while has_next:
             json_data["variables"]["cursor"] = last_cursor
             json_response = self.post_gql_request(json_data)
             try:
@@ -256,22 +256,22 @@ class Twitch(object):
 
     # === 'GLOBALS' METHODS === #
     # Create chunk of sleep of speed-up the break loop after CTRL+C
-    def __chuncked_sleep(self, seconds, chunk_size=3):
+    def __chunked_sleep(self, seconds, chunk_size=3):
         sleep_time = max(seconds, 0) / chunk_size
         for i in range(0, chunk_size):
             time.sleep(sleep_time)
-            if self.running is False:
+            if not self.running:
                 break
 
     def __check_connection_handler(self, chunk_size):
         # The success rate It's very hight usually. Why we have failed?
         # Check internet connection ...
-        while internet_connection_available() is False:
+        while not internet_connection_available():
             random_sleep = random.randint(1, 3)
             logger.warning(
                 f"No internet connection available! Retry after {random_sleep}m"
             )
-            self.__chuncked_sleep(random_sleep * 60, chunk_size=chunk_size)
+            self.__chunked_sleep(random_sleep * 60, chunk_size=chunk_size)
 
     def post_gql_request(self, json_data):
         try:
@@ -379,7 +379,7 @@ class Twitch(object):
                 streamers_index = [
                     i
                     for i in range(0, len(streamers))
-                    if streamers[i].is_online is True
+                    if streamers[i].is_online
                     and (
                         streamers[i].online_at == 0
                         or (time.time() - streamers[i].online_at) > 30
@@ -436,8 +436,8 @@ class Twitch(object):
                         """
                         for index in streamers_index:
                             if (
-                                streamers[index].settings.watch_streak is True
-                                and streamers[index].stream.watch_streak_missing is True
+                                streamers[index].settings.watch_streak
+                                and streamers[index].stream.watch_streak_missing
                                 and (
                                     streamers[index].offline_at == 0
                                     or (
@@ -456,7 +456,7 @@ class Twitch(object):
 
                     elif prior == Priority.DROPS:
                         for index in streamers_index:
-                            if streamers[index].drops_condition() is True:
+                            if streamers[index].drops_condition():
                                 streamers_watching.add(index)
                                 if remaining_watch_amount() <= 0:
                                     break
@@ -603,7 +603,7 @@ class Twitch(object):
                                     # We could add .has_preconditions_met condition inside is_printable
                                     if (
                                         drop.has_preconditions_met is not False
-                                        and drop.is_printable is True
+                                        and drop.is_printable
                                     ):
                                         drop_messages = [
                                             f"{streamers[index]} is streaming {streamers[index].stream}",
@@ -654,13 +654,13 @@ class Twitch(object):
                         logger.error(
                             f"Error while trying to send minute watched: {e}")
 
-                    self.__chuncked_sleep(
+                    self.__chunked_sleep(
                         next_iteration - time.time(), chunk_size=chunk_size
                     )
 
                 if streamers_watching == []:
-                    # self.__chuncked_sleep(60, chunk_size=chunk_size)
-                    self.__chuncked_sleep(20, chunk_size=chunk_size)
+                    # self.__chunked_sleep(60, chunk_size=chunk_size)
+                    self.__chunked_sleep(20, chunk_size=chunk_size)
             except Exception:
                 logger.error(
                     "Exception raised in send minute watched", exc_info=True)
@@ -680,7 +680,7 @@ class Twitch(object):
             streamer.channel_points = community_points["balance"]
             streamer.activeMultipliers = community_points["activeMultipliers"]
 
-            if streamer.settings.community_goals is True:
+            if streamer.settings.community_goals:
                 streamer.community_goals = {
                     goal["id"]: CommunityGoal.from_gql(goal)
                     for goal in channel["communityPointsSettings"]["goals"]
@@ -690,10 +690,10 @@ class Twitch(object):
                 self.claim_bonus(
                     streamer, community_points["availableClaim"]["id"])
 
-            if streamer.settings.community_goals is True:
+            if streamer.settings.community_goals:
                 self.contribute_to_community_goals(streamer)
 
-            if streamer.settings.community_goals is True:
+            if streamer.settings.community_goals:
                 self.contribute_to_community_goals(streamer)
 
     def make_predictions(self, event):
@@ -709,7 +709,7 @@ class Twitch(object):
         )
         if event.status == "ACTIVE":
             skip, compared_value = event.bet.skip()
-            if skip is True:
+            if skip:
                 logger.info(
                     f"Skip betting for the event {event}",
                     extra={
@@ -777,7 +777,7 @@ class Twitch(object):
             )
 
     def claim_bonus(self, streamer, claim_id):
-        if Settings.logger.less is False:
+        if not Settings.logger.less:
             logger.info(
                 f"Claiming the bonus for {streamer}!",
                 extra={"emoji": ":gift:", "event": Events.BONUS_CLAIM},
@@ -791,7 +791,7 @@ class Twitch(object):
 
     # === MOMENTS === #
     def claim_moment(self, streamer, moment_id):
-        if Settings.logger.less is False:
+        if not Settings.logger.less:
             logger.info(
                 f"Claiming the moment for {streamer}!",
                 extra={"emoji": ":video_camera:",
@@ -930,7 +930,7 @@ class Twitch(object):
                     for drop_dict in campaign["timeBasedDrops"]:
                         drop = Drop(drop_dict)
                         drop.update(drop_dict["self"])
-                        if drop.is_claimable is True:
+                        if drop.is_claimable:
                             drop.is_claimed = self.claim_drop(drop)
                             time.sleep(random.uniform(5, 10))
 
@@ -965,7 +965,7 @@ class Twitch(object):
                     for index in range(0, len(campaigns_details)):
                         if campaigns_details[index] is not None:
                             campaign = Campaign(campaigns_details[index])
-                            if campaign.dt_match is True:
+                            if campaign.dt_match:
                                 # Remove all the drops already claimed or with dt not matching
                                 campaign.clear_drops()
                                 if campaign.drops != []:
@@ -978,7 +978,7 @@ class Twitch(object):
 
                 # Check if user It's currently streaming the same game present in campaigns_details
                 for i in range(0, len(streamers)):
-                    if streamers[i].drops_condition() is True:
+                    if streamers[i].drops_condition():
                         # yes! The streamer[i] have the drops_tags enabled and we It's currently stream a game with campaign active!
                         # With 'campaigns_ids' we are also sure that this streamer have the campaign active.
                         # yes! The streamer[index] have the drops_tags enabled and we It's currently stream a game with campaign active!
@@ -996,7 +996,7 @@ class Twitch(object):
                 campaigns = []
                 self.__check_connection_handler(chunk_size)
 
-            self.__chuncked_sleep(60, chunk_size=chunk_size)
+            self.__chunked_sleep(60, chunk_size=chunk_size)
 
     def contribute_to_community_goals(self, streamer):
         # Don't bother doing the request if no goal is currently started or in stock

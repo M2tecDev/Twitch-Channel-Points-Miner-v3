@@ -119,7 +119,7 @@ class TwitchChannelPointsMiner:
         # Analytics switch
         Settings.enable_analytics = enable_analytics
 
-        if enable_analytics is True:
+        if enable_analytics:
             Settings.analytics_path = os.path.join(
                 Path().absolute(), "analytics", username
             )
@@ -184,7 +184,7 @@ class TwitchChannelPointsMiner:
         days_ago: int = 7,
     ):
         # Analytics switch
-        if Settings.enable_analytics is True:
+        if Settings.enable_analytics:
             from TwitchChannelPointsMiner.classes.AnalyticsServer import AnalyticsServer
 
             days_ago = days_ago if days_ago <= 365 * 15 else 365 * 15
@@ -229,7 +229,7 @@ class TwitchChannelPointsMiner:
 
             self.twitch.login()
 
-            if self.claim_drops_startup is True:
+            if self.claim_drops_startup:
                 self.twitch.claim_all_drops_from_inventory()
 
             streamers_name: list = []
@@ -245,7 +245,7 @@ class TwitchChannelPointsMiner:
                     streamers_name.append(username)
                     streamers_dict[username] = streamer
 
-            if followers is True:
+            if followers:
                 followers_array = self.twitch.get_followers(order=followers_order)
                 logger.info(
                     f"Load {len(followers_array)} followers from your profile!",
@@ -266,7 +266,7 @@ class TwitchChannelPointsMiner:
                     try:
                         streamer = (
                             streamers_dict[username]
-                            if isinstance(streamers_dict[username], Streamer) is True
+                            if isinstance(streamers_dict[username], Streamer)
                             else Streamer(username)
                         )
                         streamer.channel_id = self.twitch.get_channel_id(username)
@@ -358,7 +358,7 @@ class TwitchChannelPointsMiner:
             )
 
             # Going to subscribe to predictions-user-v1. Get update when we place a new prediction (confirm)
-            if make_predictions is True:
+            if make_predictions:
                 self.ws_pool.submit(
                     PubsubTopic(
                         "predictions-user-v1",
@@ -371,20 +371,20 @@ class TwitchChannelPointsMiner:
                     PubsubTopic("video-playback-by-id", streamer=streamer)
                 )
 
-                if streamer.settings.follow_raid is True:
+                if streamer.settings.follow_raid:
                     self.ws_pool.submit(PubsubTopic("raid", streamer=streamer))
 
-                if streamer.settings.make_predictions is True:
+                if streamer.settings.make_predictions:
                     self.ws_pool.submit(
                         PubsubTopic("predictions-channel-v1", streamer=streamer)
                     )
 
-                if streamer.settings.claim_moments is True:
+                if streamer.settings.claim_moments:
                     self.ws_pool.submit(
                         PubsubTopic("community-moments-channel-v1", streamer=streamer)
                     )
 
-                if streamer.settings.community_goals is True:
+                if streamer.settings.community_goals:
                     self.ws_pool.submit(
                         PubsubTopic("community-points-channel-v1", streamer=streamer)
                     )
@@ -396,9 +396,9 @@ class TwitchChannelPointsMiner:
                 # Check if is not None because maybe we have already created a new connection on array+1 and now index is None
                 for index in range(0, len(self.ws_pool.ws)):
                     if (
-                        self.ws_pool.ws[index].is_reconnecting is False
+                        not self.ws_pool.ws[index].is_reconnecting
                         and self.ws_pool.ws[index].elapsed_last_ping() > 10
-                        and internet_connection_available() is True
+                        and internet_connection_available()
                     ):
                         logger.info(
                             f"#{index} - The last PING was sent more than 10 minutes ago. Reconnecting to the WebSocket..."
@@ -425,7 +425,7 @@ class TwitchChannelPointsMiner:
                 and streamer.settings.chat != ChatPresence.NEVER
             ):
                 streamer.leave_chat()
-                if streamer.irc_chat.is_alive() is True:
+                if streamer.irc_chat.is_alive():
                     streamer.irc_chat.join()
 
         self.running = self.twitch.running = False
@@ -471,8 +471,8 @@ class TwitchChannelPointsMiner:
             for event_id in self.events_predictions:
                 event = self.events_predictions[event_id]
                 if (
-                    event.bet_confirmed is True
-                    and event.streamer.settings.make_predictions is True
+                    event.bet_confirmed
+                    and event.streamer.settings.make_predictions
                 ):
                     logger.info(
                         f"{event.streamer.settings.bet}",

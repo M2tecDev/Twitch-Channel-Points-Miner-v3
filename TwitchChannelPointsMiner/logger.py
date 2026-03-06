@@ -172,15 +172,15 @@ class GlobalFormatter(logging.Formatter):
         )
         if (
             hasattr(record, "emoji")
-            and self.settings.emoji is True
-            and record.emoji_is_present is False
+            and self.settings.emoji
+            and not record.emoji_is_present
         ):
             record.msg = emoji.emojize(
                 f"{record.emoji}  {record.msg.strip()}", language="alias"
             )
             record.emoji_is_present = True
 
-        if self.settings.emoji is False:
+        if not self.settings.emoji:
             if "\u2192" in record.msg:
                 record.msg = record.msg.replace("\u2192", "-->")
 
@@ -198,7 +198,7 @@ class GlobalFormatter(logging.Formatter):
             self.pushover(record)
             self.gotify(record)
 
-            if self.settings.colored is True:
+            if self.settings.colored:
                 record.msg = (
                     f"{self.settings.color_palette.get(record.event)}{record.msg}"
                 )
@@ -211,7 +211,7 @@ class GlobalFormatter(logging.Formatter):
 
         if (
             self.settings.telegram is not None
-            and skip_telegram is False
+            and not skip_telegram
             and self.settings.telegram.chat_id != 123456789
         ):
             self.settings.telegram.send(record.msg, record.event)
@@ -222,7 +222,7 @@ class GlobalFormatter(logging.Formatter):
 
         if (
             self.settings.discord is not None
-            and skip_discord is False
+            and not skip_discord
             and self.settings.discord.webhook_api
             != "https://discord.com/api/webhooks/0123456789/0a1B2c3D4e5F6g7H8i9J"
         ):
@@ -234,7 +234,7 @@ class GlobalFormatter(logging.Formatter):
 
         if (
             self.settings.webhook is not None
-            and skip_webhook is False
+            and not skip_webhook
             and self.settings.webhook.endpoint
             != "https://example.com/webhook"
         ):
@@ -246,7 +246,7 @@ class GlobalFormatter(logging.Formatter):
 
         if (
             self.settings.matrix is not None
-            and skip_matrix is False
+            and not skip_matrix
             and self.settings.matrix.room_id != "..."
             and self.settings.matrix.access_token
         ):
@@ -258,7 +258,7 @@ class GlobalFormatter(logging.Formatter):
 
         if (
             self.settings.pushover is not None
-            and skip_pushover is False
+            and not skip_pushover
             and self.settings.pushover.userkey != "YOUR-ACCOUNT-TOKEN"
             and self.settings.pushover.token != "YOUR-APPLICATION-TOKEN"
         ):
@@ -270,7 +270,7 @@ class GlobalFormatter(logging.Formatter):
 
         if (
             self.settings.gotify is not None
-            and skip_gotify is False
+            and not skip_gotify
             and self.settings.gotify.endpoint
             != "https://example.com/message?token=TOKEN"
         ):
@@ -278,7 +278,7 @@ class GlobalFormatter(logging.Formatter):
 
 
 def configure_loggers(username, settings):
-    if settings.colored is True:
+    if settings.colored:
         init(autoreset=True)
 
     # Queue handler that will handle the logger queue
@@ -291,7 +291,7 @@ def configure_loggers(username, settings):
     root_logger.addHandler(queue_handler)
 
     # Adding a username to the format based on settings
-    console_username = "" if settings.console_username is False else f"[{username}] "
+    console_username = "" if not settings.console_username else f"[{username}] "
 
     settings.username = console_username
 
@@ -301,20 +301,20 @@ def configure_loggers(username, settings):
         GlobalFormatter(
             fmt=(
                 "%(asctime)s - %(levelname)s - [%(funcName)s]: %(message)s"
-                if settings.less is False
+                if not settings.less
                 else "%(asctime)s - %(message)s"
             ),
             datefmt=(
-                "%d/%m/%y %H:%M:%S" if settings.less is False else "%d/%m %H:%M:%S"
+                "%d/%m/%y %H:%M:%S" if not settings.less else "%d/%m %H:%M:%S"
             ),
             settings=settings,
         )
     )
 
-    if settings.save is True:
+    if settings.save:
         logs_path = os.path.join(Path().absolute(), "logs")
         Path(logs_path).mkdir(parents=True, exist_ok=True)
-        if settings.auto_clear is True:
+        if settings.auto_clear:
             logs_file = os.path.join(
                 logs_path,
                 f"{username}.log",
@@ -329,7 +329,7 @@ def configure_loggers(username, settings):
             )
         else:
             # Getting time zone from the console_handler's formatter since they are the same
-            tz = "" if console_handler.formatter.timezone is False else console_handler.formatter.timezone
+            tz = "" if not console_handler.formatter.timezone else console_handler.formatter.timezone
             logs_file = os.path.join(
                 logs_path,
                 f"{username}.{datetime.now(tz).strftime('%Y%m%d-%H%M%S')}.log",

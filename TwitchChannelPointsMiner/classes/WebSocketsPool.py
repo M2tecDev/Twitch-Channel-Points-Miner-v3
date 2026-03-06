@@ -52,7 +52,7 @@ class WebSocketsPool:
         if topic not in self.ws[index].topics:
             self.ws[index].topics.append(topic)
 
-        if self.ws[index].is_opened is False:
+        if not self.ws[index].is_opened:
             self.ws[index].pending_topics.append(topic)
         else:
             self.ws[index].listen(topic, self.twitch.twitch_login.get_auth_token())
@@ -70,7 +70,7 @@ class WebSocketsPool:
         )
 
     def __start(self, index):
-        if Settings.disable_ssl_cert_verification is True:
+        if Settings.disable_ssl_cert_verification:
             import ssl
 
             thread_ws = Thread(
@@ -99,10 +99,10 @@ class WebSocketsPool:
             for topic in ws.pending_topics:
                 ws.listen(topic, ws.twitch.twitch_login.get_auth_token())
 
-            while ws.is_closed is False:
+            while not ws.is_closed:
                 # Else: the ws is currently in reconnecting phase, you can't do ping or other operation.
                 # Probably this ws will be closed very soon with ws.is_closed = True
-                if ws.is_reconnecting is False:
+                if not ws.is_reconnecting:
                     ws.ping()  # We need ping for keep the connection alive
                     time.sleep(random.uniform(25, 30))
 
@@ -131,7 +131,7 @@ class WebSocketsPool:
     @staticmethod
     def handle_reconnection(ws):
         # Reconnect only if ws.is_reconnecting is False to prevent more than 1 ws from being created
-        if ws.is_reconnecting is False:
+        if not ws.is_reconnecting:
             # Close the current WebSocket.
             ws.is_closed = True
             ws.keep_running = False
@@ -141,13 +141,13 @@ class WebSocketsPool:
             # So the external ping check will be locked
             ws.is_reconnecting = True
 
-            if ws.forced_close is False:
+            if not ws.forced_close:
                 logger.info(
                     f"#{ws.index} - Reconnecting to Twitch PubSub server in ~60 seconds"
                 )
                 time.sleep(30)
 
-                while internet_connection_available() is False:
+                while not internet_connection_available():
                     random_sleep = random.randint(1, 3)
                     logger.warning(
                         f"#{ws.index} - No internet connection available! Retry after {random_sleep}m"
@@ -195,7 +195,7 @@ class WebSocketsPool:
                             balance = message.data["balance"]["balance"]
                             ws.streamers[streamer_index].channel_points = balance
                             # Analytics switch
-                            if Settings.enable_analytics is True:
+                            if Settings.enable_analytics:
                                 ws.streamers[streamer_index].persistent_series(
                                     event_type=message.data["point_gain"]["reason_code"]
                                     if message.type == "points-earned"
@@ -217,7 +217,7 @@ class WebSocketsPool:
                                 reason_code, earned
                             )
                             # Analytics switch
-                            if Settings.enable_analytics is True:
+                            if Settings.enable_analytics:
                                 ws.streamers[streamer_index].persistent_annotations(
                                     reason_code, f"+{earned} - {reason_code}"
                                 )
@@ -232,7 +232,7 @@ class WebSocketsPool:
                         if message.type == "stream-up":
                             ws.streamers[streamer_index].stream_up = time.time()
                         elif message.type == "stream-down":
-                            if ws.streamers[streamer_index].is_online is True:
+                            if ws.streamers[streamer_index].is_online:
                                 ws.streamers[streamer_index].set_offline()
                         elif message.type == "viewcount":
                             if ws.streamers[streamer_index].stream_up_elapsed():
@@ -330,7 +330,7 @@ class WebSocketsPool:
                             ws.events_predictions[event_id].status = event_status
                             # Game over we can't update anymore the values... The bet was placed!
                             if (
-                                ws.events_predictions[event_id].bet_placed is False
+                                not ws.events_predictions[event_id].bet_placed
                                 and ws.events_predictions[event_id].bet.decision == {}
                             ):
                                 ws.events_predictions[event_id].bet.update_outcomes(
@@ -385,7 +385,7 @@ class WebSocketsPool:
 
                                 if event_prediction.result["type"]:
                                     # Analytics switch
-                                    if Settings.enable_analytics is True:
+                                    if Settings.enable_analytics:
                                         ws.streamers[
                                             streamer_index
                                         ].persistent_annotations(
@@ -395,7 +395,7 @@ class WebSocketsPool:
                             elif message.type == "prediction-made":
                                 event_prediction.bet_confirmed = True
                                 # Analytics switch
-                                if Settings.enable_analytics is True:
+                                if Settings.enable_analytics:
                                     ws.streamers[streamer_index].persistent_annotations(
                                         "PREDICTION_MADE",
                                         f"Decision: {event_prediction.bet.decision['choice']} - {event_prediction.title}",

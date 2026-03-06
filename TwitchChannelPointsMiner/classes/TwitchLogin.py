@@ -323,7 +323,7 @@ class TwitchLogin(object):
                 0]) if persistent is not None else self.user_id
         )
         if user_id is None:
-            if self.__set_user_id() is True:
+            if self.__set_user_id:
                 return self.user_id
         return user_id
 

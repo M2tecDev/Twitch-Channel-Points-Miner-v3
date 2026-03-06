@@ -1449,10 +1449,7 @@ function safeSmoothScroll(el, opts) {
     if (!el) return;
     try { el.scrollIntoView(opts); }
     catch (_) { try { el.scrollIntoView(true); } catch (__) {} }
-}
-
-;
-
+};
 
 /* ─── Mobile: sidebar closes after streamer click ────────────────────────── */
 document.addEventListener('click', function(e) {
@@ -1463,8 +1460,6 @@ document.addEventListener('click', function(e) {
         if (sb) sb.classList.remove('is-open');
     }
 }, true);
-
-
 
 /* ─── API helpers ────────────────────────────────────────────────────────── */
 async function fetchConfig() {
@@ -1546,15 +1541,9 @@ function showRestartBanner() {
 var _settingsUnlocked = false;
 
 function _checkSettingsPassword(config, onSuccess) {
-    var pw = '';
-    if (config) {
-        if (config.miner && config.miner.settings_password) {
-            pw = String(config.miner.settings_password).trim();
-        } else if (config.settings_password) {
-            pw = String(config.settings_password).trim();
-        }
-    }
-    if (!pw || _settingsUnlocked) { onSuccess(); return; }
+    // Server schickt jetzt nur noch has_settings_password: true/false
+    var hasPassword = config.has_settings_password;
+    if (!hasPassword || _settingsUnlocked) { onSuccess(); return; }
 
     // Altes Overlay komplett entfernen
     var oldOverlay = document.getElementById('settings-lock-overlay');
@@ -1564,7 +1553,6 @@ function _checkSettingsPassword(config, onSuccess) {
     var overlay = document.createElement('div');
     overlay.id = 'settings-lock-overlay';
     overlay.className = 'settings-lock-overlay';
-    // KEIN overlay.hidden = true hier!
 
     var box = document.createElement('div');
     box.className = 'settings-lock-box';
@@ -1611,18 +1599,52 @@ function _checkSettingsPassword(config, onSuccess) {
 
     setTimeout(function() { inp.focus(); }, 50);
 
-    function doCheck() {
-        if (inp.value === pw) {
-            _settingsUnlocked = true;
-            overlay.hidden = true;
-            window._settingsPassword = inp.value;
-            onSuccess();
-        } else {
+    // ── Server-seitige Prüfung statt lokaler Vergleich ──
+    async function doCheck() {
+        var entered = inp.value.trim();
+        if (!entered) return;
+
+        // Button deaktivieren während der Request läuft
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking\u2026';
+
+        try {
+            // Wir nutzen einen eigenen Verify-Endpoint,
+            // oder alternativ: POST /config mit dem eingegebenen Passwort
+            // Wenn das Passwort falsch ist, kommt 401 zurück
+            var r = await fetch('./config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Settings-Password': entered
+                },
+                body: JSON.stringify(config)
+            });
+            var res = await r.json();
+
+            if (r.status === 401 || (res.error && res.error.indexOf('Unauthorized') !== -1)) {
+                // Falsches Passwort
+                errMsg.hidden = false;
+                errMsg.textContent = 'Wrong password';
+                setTimeout(function() { errMsg.hidden = true; }, 2500);
+                inp.value = '';
+                inp.focus();
+            } else {
+                // Richtig! Passwort merken für weitere Requests
+                window._settingsPassword = entered;
+                _settingsUnlocked = true;
+                overlay.hidden = true;
+                onSuccess();
+            }
+        } catch(e) {
             errMsg.hidden = false;
-            setTimeout(function() { errMsg.hidden = true; }, 2000);
-            inp.value = '';
-            inp.focus();
+            errMsg.textContent = 'Connection error — try again';
+            setTimeout(function() { errMsg.hidden = true; }, 3000);
         }
+
+        // Button wieder aktivieren
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-unlock"></i> Unlock';
     }
 
     btn.addEventListener('click', doCheck);
