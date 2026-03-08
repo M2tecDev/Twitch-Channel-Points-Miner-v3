@@ -1554,15 +1554,13 @@ function showRestartBanner() {
 var _settingsUnlocked = false;
 
 function _checkSettingsPassword(config, onSuccess) {
-    // Server schickt jetzt nur noch has_settings_password: true/false
     var hasPassword = config.has_settings_password;
     if (!hasPassword || _settingsUnlocked) { onSuccess(); return; }
 
-    // Altes Overlay komplett entfernen
+    // Altes Overlay entfernen
     var oldOverlay = document.getElementById('settings-lock-overlay');
     if (oldOverlay && oldOverlay.parentNode) oldOverlay.parentNode.removeChild(oldOverlay);
 
-    // Neu aufbauen mit direkten Referenzen (kein innerHTML, kein getElementById)
     var overlay = document.createElement('div');
     overlay.id = 'settings-lock-overlay';
     overlay.className = 'settings-lock-overlay';
@@ -1612,42 +1610,38 @@ function _checkSettingsPassword(config, onSuccess) {
 
     setTimeout(function() { inp.focus(); }, 50);
 
-    // ── Server-seitige Prüfung statt lokaler Vergleich ──
     async function doCheck() {
         var entered = inp.value.trim();
         if (!entered) return;
 
-        // Button deaktivieren während der Request läuft
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking\u2026';
 
         try {
-            // Wir nutzen einen eigenen Verify-Endpoint,
-            // oder alternativ: POST /config mit dem eingegebenen Passwort
-            // Wenn das Passwort falsch ist, kommt 401 zurück
             var r = await fetch('./config', {
-                method: 'POST',
+                method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json',
                     'X-Settings-Password': entered
-                },
-                body: JSON.stringify(config)
+                }
             });
-            var res = await r.json();
 
-            if (r.status === 401 || (res.error && res.error.indexOf('Unauthorized') !== -1)) {
-                // Falsches Passwort
+            if (r.status === 401) {
                 errMsg.hidden = false;
                 errMsg.textContent = 'Wrong password';
                 setTimeout(function() { errMsg.hidden = true; }, 2500);
                 inp.value = '';
                 inp.focus();
-            } else {
-                // Richtig! Passwort merken für weitere Requests
+            } else if (r.ok) {
+                var freshCfg = await r.json();
+                _settingsCfg = freshCfg;
                 window._settingsPassword = entered;
                 _settingsUnlocked = true;
                 overlay.hidden = true;
                 onSuccess();
+            } else {
+                errMsg.hidden = false;
+                errMsg.textContent = 'Server error ' + r.status;
+                setTimeout(function() { errMsg.hidden = true; }, 3000);
             }
         } catch(e) {
             errMsg.hidden = false;
@@ -1655,7 +1649,6 @@ function _checkSettingsPassword(config, onSuccess) {
             setTimeout(function() { errMsg.hidden = true; }, 3000);
         }
 
-        // Button wieder aktivieren
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-unlock"></i> Unlock';
     }

@@ -1231,8 +1231,3 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   .tip::after  { left: auto; right: 0; transform: none; bottom: calc(100% + 7px); }
   .tip::before { left: auto; right: 6px; transform: none; }
 }
-
-:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-}
