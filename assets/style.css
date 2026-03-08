@@ -823,7 +823,7 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   :root { --sidebar-w: 0px; }
   .app-sidebar { position: fixed; left: 0; top: var(--header-h); z-index: 300; width: 220px; height: calc(100vh - var(--header-h)); }
   .app-sidebar:not(.is-open) { transform: translateX(-100%); opacity: 0; pointer-events: none; }
-  .app-sidebar.is-open  { transform: translateX(0); opacity: 1; pointer-events: all; }
+  .app-sidebar.is-open  { transform: translateX(0); opacity: 1; pointer-events: auto; }
   .app-main { padding: 12px 12px 0; }
   .badge-row { display: none; }
   .header-nav span { display: none; }
@@ -1230,4 +1230,9 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   /* flip tooltip near bottom of viewport */
   .tip::after  { left: auto; right: 0; transform: none; bottom: calc(100% + 7px); }
   .tip::before { left: auto; right: 6px; transform: none; }
+}
+
+:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 }

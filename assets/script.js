@@ -94,6 +94,16 @@ function fmtTs(ts) {
     });
 }
 
+/** Help function: Escape HTML special characters' */
+function esc(str) {
+    return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 /** Readable number → '1,234,567' */
 const fmt = n => Number(n).toLocaleString();
 
@@ -514,8 +524,6 @@ async function fetchStatus() {
         }
     } catch(e) {}
 }
-setInterval(fetchStatus, 30_000);
-fetchStatus();
 
 // ─────────────────────────────────────────────────────────────
 //  ROUTER
@@ -1052,13 +1060,20 @@ async function ensureSeriesCache(name) {
     const end = state.endDate || new Date();
 
     try {
-        const data = await fetchStreamerData(name, start, end, new AbortController().signal);
+        if (ctrl.streamer) ctrl.streamer.abort();
+        ctrl.streamer = new AbortController();
+        const data = await fetchStreamerData(name, start, end, ctrl.streamer.signal);
+        ctrl.streamer = null;
         state.seriesCache.set(name, {
             series:      data.series || [],
             annotations: (data.annotations || []).map((a,i) => ({ ...a, id: `a${i}` })),
             cachedAt:    Date.now(),
         });
-    } catch {}
+    } catch (e) {
+        if (e && e.name !== 'AbortError') {
+            console.warn('ensureSeriesCache failed for', name, e);
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1164,7 +1179,6 @@ async function preloadStreakData() {
     })();
     const end = state.endDate || new Date();
 
-    // Enforce cache cap: evict oldest entries beyond 30
     const CACHE_MAX = 30;
 
     for (const s of state.streamersList) {
@@ -1178,16 +1192,19 @@ async function preloadStreakData() {
         }
 
         try {
-            // Store AbortController so it can be cancelled if needed
-            const ac   = new AbortController();
-            const data = await fetchStreamerData(s.name, start, end, ac.signal);
+            ctrl.preload = new AbortController();
+            const data = await fetchStreamerData(s.name, start, end, ctrl.preload.signal);
+            ctrl.preload = null;
             state.seriesCache.set(s.name, {
                 series:      data.series || [],
                 annotations: (data.annotations || []).map((a, i) => ({ ...a, id: `a${i}` })),
                 cachedAt:    Date.now(),
             });
             renderSidebar();
-        } catch { /* ignore per-streamer errors */ }
+        } catch (e) {
+            if (e && e.name === 'AbortError') break;
+            /* ignore */
+        }
 
         await new Promise(r => setTimeout(r, 150));
     }
@@ -1202,19 +1219,8 @@ async function preloadStreakData() {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  LOG
-// ─────────────────────────────────────────────────────────────
-
-
-// ─────────────────────────────────────────────────────────────
-//  BOOT
-// ─────────────────────────────────────────────────────────────
-
-
-// ─────────────────────────────────────────────────────────────
 //  ROUTER
 // ─────────────────────────────────────────────────────────────
-
 
 
 function navigate(path) {
@@ -1246,6 +1252,11 @@ async function router() {
 
     clearTimeout(refreshTimer);
 
+    if (ctrl.preload) {
+        ctrl.preload.abort();
+        ctrl.preload = null;
+        state.preloadDone = false; // allows restart 
+    }
     switch (route.view) {
         case 'dashboard':
             document.title = 'Overview — CPM v3';
@@ -1301,6 +1312,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Background-fetch series for all streamers so streak badges
     // are visible immediately — fire-and-forget (no await)
     preloadStreakData();
+    fetchStatus();
+    setInterval(fetchStatus, 30_000);
 
     // ── Dark mode toggle ─────────────────────
     dmChk?.addEventListener('change', function () { applyDarkMode(this.checked); });
@@ -1654,7 +1667,6 @@ function _checkSettingsPassword(config, onSuccess) {
 }
 
 /* ─── VIEW: BETS ─────────────────────────────────────────────────────────── */
-var _betsData = null;
 async function renderBets() {
     showView('view-bets');
     document.title = 'Bet History — CPM v3';
@@ -1678,8 +1690,9 @@ async function renderBets() {
             var names = [];
             bets.forEach(function(b){ if(names.indexOf(b.streamer)===-1) names.push(b.streamer); });
             names.sort();
+            // ✅ FIX: esc() verhindert HTML-Injection in Streamer-Namen
             sf.innerHTML = '<option value="">All streamers</option>' +
-                names.map(function(n){ return '<option value="'+n+'">'+n+'</option>'; }).join('');
+                names.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('');
         }
         function renderTable() {
             var sf2 = (document.getElementById('bets-filter-streamer')||{}).value||'';
@@ -1691,12 +1704,13 @@ async function renderBets() {
                 LOSE:   '<span class="bet-badge bet-lose"><i class="fas fa-times"></i> LOSE</span>',
                 PLACED: '<span class="bet-badge bet-placed"><i class="fas fa-hourglass-half"></i> PLACED</span>',
             };
+            // ✅ FIX: esc() auf alle Felder die aus der API kommen
             tbody.innerHTML = filtered.map(function(b){
                 return '<tr>'+
-                    '<td class="bets-ts">'+new Date(b.timestamp).toLocaleString('de-DE')+'</td>'+
-                    '<td class="bets-streamer"><a href="#streamer/'+encodeURIComponent(b.streamer)+'">'+b.streamer+'</a></td>'+
-                    '<td class="bets-title" title="'+(b.title||'')+'">'+( b.title||'—')+'</td>'+
-                    '<td>'+(BADGES[b.result]||b.result)+'</td>'+
+                    '<td class="bets-ts">'+esc(new Date(b.timestamp).toLocaleString('de-DE'))+'</td>'+
+                    '<td class="bets-streamer"><a href="#streamer/'+encodeURIComponent(b.streamer)+'">'+esc(b.streamer)+'</a></td>'+
+                    '<td class="bets-title" title="'+esc(b.title||'')+'">'+esc(b.title||'—')+'</td>'+
+                    '<td>'+(BADGES[b.result]||esc(b.result))+'</td>'+
                     '<td class="bets-pts">'+fmt(b.points_at)+'</td>'+
                 '</tr>';
             }).join('');
@@ -1707,7 +1721,7 @@ async function renderBets() {
         if(sfEl) sfEl.onchange=renderTable;
         if(rfEl) rfEl.onchange=renderTable;
     } catch(err) {
-        if(tbody) tbody.innerHTML='<tr><td colspan="5" class="bets-loading is-error"><i class="fas fa-triangle-exclamation"></i> '+err.message+'</td></tr>';
+        if(tbody) tbody.innerHTML='<tr><td colspan="5" class="bets-loading is-error"><i class="fas fa-triangle-exclamation"></i> '+esc(err.message)+'</td></tr>';
     }
     renderSidebar();
 }
