@@ -729,22 +729,58 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   padding: 0 20px 8px;
 }
 .log-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 14px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 14px;
   background: var(--bg-2); border: 1px solid var(--border);
   border-top: 2px solid var(--accent2);
   border-radius: var(--r-md) var(--r-md) 0 0;
   font-size: 12px; font-weight: 700; color: var(--text-muted);
 }
+.log-header > span { margin-right: auto; }
 .log-header i { color: var(--accent2-b); }
+
+/* Filter-Buttons */
+.log-filter-group {
+  display: flex; gap: 3px;
+}
+.log-filter-btn {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 3px 10px;
+  color: var(--text-muted); font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: background var(--t), color var(--t), border-color var(--t);
+  display: flex; align-items: center; gap: 5px;
+}
+.log-filter-btn:hover { background: var(--bg-3); color: var(--text); }
+.log-filter-btn.is-active {
+  background: var(--accent-dim);
+  border-color: var(--accent-bdr);
+  color: var(--accent-b);
+}
+
+/* Log content */
 #log-content {
   font-family: var(--font-mono); font-size: 12px;
-  color: var(--text); background: var(--bg-2);
+  background: var(--bg-2);
   border: 1px solid var(--border); border-top: none;
   border-radius: 0 0 var(--r-md) var(--r-md);
-  padding: 12px 16px; white-space: pre-wrap; word-break: break-word;
+  padding: 10px 16px;
   max-height: 320px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px;
 }
+
+/* Log lines */
+.log-line {
+  display: block; padding: 1px 0;
+  white-space: pre-wrap; word-break: break-all;
+  line-height: 1.5;
+}
+.log-info    { color: var(--text-muted); }
+.log-gains   { color: #4ade80; }           /* green - win  */
+.log-warning { color: #fbbf24; }           /* yellow */
+.log-error   { color: #f87171; }           /* red */
+.log-debug   { color: var(--text-dim); }
+
+.log-gains .log-num { font-weight: 700; color: #86efac; }
 
 /* ═══════════════════════════════════════════
    FOOTER BAR
@@ -1201,16 +1237,6 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
 .notif-save-row {
   display: flex; justify-content: flex-end;
   padding-top: 10px; border-top: 1px solid var(--border);
-}
-
-/* ══════════════════════════════════════════════
-   LOG LEVEL FILTER DROPDOWN
-══════════════════════════════════════════════ */
-.log-level-filter {
-  background: var(--bg-2); border: 1px solid var(--border);
-  border-radius: var(--r-sm); padding: 3px 8px;
-  color: var(--text); font-size: 11px; cursor: pointer;
-  margin-left: auto; -webkit-appearance: none; appearance: none;
 }
 
 /* ══════════════════════════════════════════════

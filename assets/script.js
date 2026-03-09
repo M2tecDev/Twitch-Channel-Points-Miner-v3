@@ -2232,20 +2232,93 @@ function renderNotificationsTab(config) {
 
 /* ─── Performant Log ─────────────────────────────────────────────────────── */
 (function patchLog() {
-    var LOG_MAX_LINES = 500;
-    var _logLines     = [];
-    var _rafPending   = false;
 
+    // ── Konfiguration ─────────────────────────────────────────
+    var LOG_MAX_LINES = 600;       // Max saved lines
+    var LOG_RENDER_MAX = 300;      // Maximum number of rows displayed (performance)
+
+    // ── State ─────────────────────────────────────────────────
+    var _logLines    = [];         // All raw lines (strings)
+    var _rafPending  = false;      // requestAnimationFrame is currently running
+    var _activeFilter = 'all';     // active Filter-Key
+    var _logActive   = false;
+    var _logAuto     = true;
+    var _logIdx      = 0;
+
+    // ── Zeilen-Klassifizierung ─────────────────────────────────
+    var GAINS_RE   = /\+\s*\d+|point|streak|bonus|drop|claim|reward|gain|mined/i;
+    var WARNING_RE = /\bWARN(ING)?\b/i;
+    var ERROR_RE   = /\bERROR\b/i;
+    var DEBUG_RE   = /\bDEBUG\b/i;
+
+    function _classifyLine(line) {
+        if (ERROR_RE.test(line))   return 'error';
+        if (WARNING_RE.test(line)) return 'warning';
+        if (GAINS_RE.test(line))   return 'gains';
+        if (DEBUG_RE.test(line))   return 'debug';
+        return 'info';
+    }
+
+    function _lineVisible(cls) {
+        if (_activeFilter === 'all')     return true;
+        if (_activeFilter === 'gains')   return cls === 'gains';
+        if (_activeFilter === 'warning') return cls === 'warning';
+        if (_activeFilter === 'error')   return cls === 'error';
+        return true;
+    }
+
+    // ── Number Highlighting ─────────────────────
+    function _highlightNums(text) {
+        return text.replace(/(\+\s*\d[\d,]*)/g, '<span class="log-num">$1</span>');
+    }
+
+    // ── DOM-Render  ───────────
     function _flushLog() {
         _rafPending = false;
-        var pre = document.getElementById('log-content');
-        if (!pre) return;
+        var box = document.getElementById('log-content');
+        if (!box) return;
+
         if (_logLines.length > LOG_MAX_LINES) {
             _logLines = _logLines.slice(_logLines.length - LOG_MAX_LINES);
         }
-        var atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 60;
-        pre.textContent = _logLines.join('\n');
-        if (atBottom) pre.scrollTop = pre.scrollHeight;
+
+        var filtered = _logLines.filter(function(l) {
+            return _lineVisible(_classifyLine(l));
+        });
+        var visible = filtered.slice(-LOG_RENDER_MAX);
+
+        // remember Scroll-Position
+        var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+
+        // create fragment
+        var frag = document.createDocumentFragment();
+        for (var i = 0; i < visible.length; i++) {
+            var cls = _classifyLine(visible[i]);
+            var span = document.createElement('span');
+            span.className = 'log-line log-' + cls;
+            if (cls === 'gains') {
+                span.innerHTML = _highlightNums(_escLog(visible[i]));
+            } else {
+                span.textContent = visible[i];
+            }
+            frag.appendChild(span);
+        }
+
+        box.innerHTML = '';
+        box.appendChild(frag);
+
+        if (atBottom) box.scrollTop = box.scrollHeight;
+    }
+
+    function _escLog(str) {
+        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function _scheduleFlush() {
+        if (!_rafPending) {
+            _rafPending = true;
+            requestAnimationFrame(_flushLog);
+        }
     }
 
     function _appendLog(text) {
@@ -2253,16 +2326,10 @@ function renderNotificationsTab(config) {
         var newLines = text.split('\n');
         if (newLines[newLines.length - 1] === '') newLines.pop();
         _logLines = _logLines.concat(newLines);
-        if (!_rafPending) {
-            _rafPending = true;
-            requestAnimationFrame(_flushLog);
-        }
+        _scheduleFlush();
     }
 
-    var _logActive = false;
-    var _logAuto   = true;
-    var _logIdx    = 0;
-
+    // ── Polling ───────────────────────────────────────────────
     async function _poll() {
         if (!_logActive) return;
         try {
@@ -2275,6 +2342,7 @@ function renderNotificationsTab(config) {
         if (_logAuto && _logActive) setTimeout(_poll, 1000);
     }
 
+    // ── Log-Toggle (Footer-Checkbox) ──────────────────────────
     var logChk = document.getElementById('log');
     if (logChk) {
         var clone = logChk.cloneNode(true);
@@ -2295,6 +2363,7 @@ function renderNotificationsTab(config) {
         }
     }
 
+    // ── Pause/Resume-Button ───────────────────────────────────
     var pauseBtn = document.getElementById('auto-update-log');
     if (pauseBtn) {
         var pbClone = pauseBtn.cloneNode(true);
@@ -2306,28 +2375,17 @@ function renderNotificationsTab(config) {
         });
     }
 
-    var logHeader = document.querySelector('.log-header');
-    if (logHeader && !logHeader.querySelector('.log-level-filter')) {
-        var select = document.createElement('select');
-        select.className = 'log-level-filter';
-        select.title = 'Log level filter';
-        select.innerHTML =
-            '<option value="1">INFO+</option>'+
-            '<option value="0">ALL</option>'+
-            '<option value="2">WARNING+</option>'+
-            '<option value="3">ERROR only</option>';
-        select.onchange = function() {
-            var min = parseInt(this.value, 10);
-            var RANKS = {DEBUG:0, INFO:1, WARNING:2, WARN:2, ERROR:3};
-            var LEVEL_RE = /\b(DEBUG|INFO|WARNING|WARN|ERROR)\b/;
-            var filtered = _logLines.filter(function(line) {
-                var m = line.match(LEVEL_RE);
-                var lv = m ? m[1] : 'INFO';
-                return (RANKS[lv] !== undefined ? RANKS[lv] : 1) >= min;
+    // ── Filter-Buttons ────────────────────────────────────────
+    document.querySelectorAll('.log-filter-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.log-filter-btn').forEach(function(b) {
+                b.classList.remove('is-active');
             });
-            var pre = document.getElementById('log-content');
-            if (pre) pre.textContent = filtered.join('\n');
-        };
-        logHeader.appendChild(select);
-    }
+            btn.classList.add('is-active');
+            _activeFilter = btn.dataset.filter;
+            // instand render new 
+            _scheduleFlush();
+        });
+    });
+
 }());

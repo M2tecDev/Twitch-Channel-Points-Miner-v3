@@ -701,12 +701,27 @@
 <div class="log-section" id="log-box" hidden>
   <div class="log-header">
     <span><i class="fas fa-terminal" aria-hidden="true"></i> Application Log</span>
+
+    <div class="log-filter-group" role="group" aria-label="Log filter">
+      <button class="log-filter-btn is-active" data-filter="all">All</button>
+      <button class="log-filter-btn" data-filter="gains">
+        <i class="fas fa-coins"></i> Gains
+      </button>
+      <button class="log-filter-btn" data-filter="warning">
+        <i class="fas fa-triangle-exclamation"></i> Warnings
+      </button>
+      <button class="log-filter-btn" data-filter="error">
+        <i class="fas fa-circle-xmark"></i> Errors
+      </button>
+    </div>
+
     <button id="auto-update-log" class="btn btn-sm" aria-label="Pause or resume log updates" title="Pause/Resume">
       ⏸️
     </button>
   </div>
-  <pre id="log-content" aria-live="polite" aria-label="Application log">Set save=True in logger_settings to save logs to a file.
-</pre>
+  <div id="log-content" role="log" aria-live="polite" aria-label="Application log">
+    <span class="log-line log-info">Set save=True in logger_settings to save logs to a file.</span>
+  </div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
