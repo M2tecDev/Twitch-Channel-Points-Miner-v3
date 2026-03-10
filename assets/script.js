@@ -703,7 +703,6 @@ function renderActivityFeed() {
 
         const icon = document.createElement('div');
         icon.className = 'feed-icon';
-        // FIX V3: use correct icon per event type based on annotation colour
         const FEED_ICON_MAP = {
             '#36b535': '<i class="fas fa-trophy" aria-hidden="true"></i>',   // WIN
             '#ff4545': '<i class="fas fa-times-circle" aria-hidden="true"></i>', // LOSE
@@ -711,6 +710,10 @@ function renderActivityFeed() {
             '#45c1ff': '<i class="fas fa-fire" aria-hidden="true"></i>',     // STREAK
         };
         icon.innerHTML = FEED_ICON_MAP[item.borderColor] || '<i class="fas fa-bolt" aria-hidden="true"></i>';
+        if (item.borderColor) {
+            icon.style.color = item.borderColor;
+            icon.style.background = item.borderColor + '22';
+        }
 
         const content = document.createElement('div');
         content.className = 'feed-content';
@@ -1060,10 +1063,8 @@ async function ensureSeriesCache(name) {
     const end = state.endDate || new Date();
 
     try {
-        if (ctrl.streamer) ctrl.streamer.abort();
-        ctrl.streamer = new AbortController();
-        const data = await fetchStreamerData(name, start, end, ctrl.streamer.signal);
-        ctrl.streamer = null;
+        const localCtrl = new AbortController();
+        const data = await fetchStreamerData(name, start, end, localCtrl.signal);
         state.seriesCache.set(name, {
             series:      data.series || [],
             annotations: (data.annotations || []).map((a,i) => ({ ...a, id: `a${i}` })),
@@ -1235,6 +1236,11 @@ async function router() {
     // Set data attribute on shell for CSS-driven layout tweaks
     const shell = document.querySelector('.app-shell');
     if (shell) shell.dataset.currentView = route.view;
+
+    // Abort active streamer fetch when leaving streamer view
+    if (prevView === 'streamer' && route.view !== 'streamer') {
+        if (ctrl.streamer) { ctrl.streamer.abort(); ctrl.streamer = null; }
+    }
 
     // Clear compare selection when leaving compare view
     if (prevView === 'compare' && route.view !== 'compare') {
@@ -1669,7 +1675,7 @@ async function renderBets() {
         var r = await fetch('./bets');
         if (!r.ok) throw new Error(r.status);
         var bets = await r.json();
-        _betsData = bets;
+        var _betsData = bets;
         var wins   = bets.filter(function(b){ return b.result==='WIN'; }).length;
         var losses = bets.filter(function(b){ return b.result==='LOSE'; }).length;
         var rate   = (wins+losses)>0 ? Math.round(wins/(wins+losses)*100) : 0;
@@ -2023,11 +2029,11 @@ function _field(label, id, type, value, placeholder, tip) {
     var tipHtml = tip ? ' <span class="tip" data-tip="'+tip+'">?</span>' : '';
     var inputHtml;
     if (type === 'password') {
-        inputHtml = '<input class="input notif-input" type="password" id="'+id+'" value="'+_esc(value)+'" placeholder="'+placeholder+'...">';
+        inputHtml = '<input class="input notif-input" type="password" id="'+id+'" value="'+esc(value)+'" placeholder="'+placeholder+'...">';
     } else if (type === 'number') {
         inputHtml = '<input class="input notif-input" type="number" id="'+id+'" value="'+value+'" placeholder="'+placeholder+'">';
     } else {
-        inputHtml = '<input class="input notif-input" type="text" id="'+id+'" value="'+_esc(value)+'" placeholder="'+placeholder+'...">';
+        inputHtml = '<input class="input notif-input" type="text" id="'+id+'" value="'+esc(value)+'" placeholder="'+placeholder+'...">';
     }
     return '<div class="stg-field notif-field">'+
         '<label class="stg-field-label" for="'+id+'">'+label+tipHtml+'</label>'+
@@ -2042,10 +2048,6 @@ function _selectField(label, id, options, value, tip) {
         '<label class="stg-field-label" for="'+id+'">'+label+tipHtml+'</label>'+
         '<select class="input stg-select notif-select" id="'+id+'">'+opts+'</select>'+
     '</div>';
-}
-
-function _esc(s) {
-    return String(s||'').replace(/"/g, '&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function renderNotificationsTab(config) {
@@ -2333,7 +2335,7 @@ function renderNotificationsTab(config) {
     async function _poll() {
         if (!_logActive) return;
         try {
-            var r = await fetch('/log?lastIndex=' + _logIdx);
+            var r = await fetch('./log?lastIndex=' + _logIdx);
             if (r.ok) {
                 var txt = await r.text();
                 if (txt) { _appendLog(txt); _logIdx += txt.length; }

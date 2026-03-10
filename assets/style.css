@@ -1257,3 +1257,16 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   .tip::after  { left: auto; right: 0; transform: none; bottom: calc(100% + 7px); }
   .tip::before { left: auto; right: 6px; transform: none; }
 }
+
+/* ── Small phones: hide logo text so all 3 theme buttons stay visible ── */
+@media (max-width: 520px) {
+  .logo-text { display: none; }
+  .header-inner { gap: 6px; padding: 0 8px; }
+  .nav-link { padding: 5px 7px; }
+}
+/* ── Very small phones (≤380px): shrink theme dots + nav padding ──────── */
+@media (max-width: 380px) {
+  .theme-btn { width: 16px; height: 16px; }
+  .theme-switcher { gap: 4px; }
+  .nav-link { padding: 5px 5px; }
+}

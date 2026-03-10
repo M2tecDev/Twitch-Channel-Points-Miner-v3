@@ -100,7 +100,7 @@ __pypackages__/
 # Celery stuff
 celerybeat-schedule
 celerybeat.pid
-
+node_modules/
 # SageMath parsed files
 *.sage.py
 
@@ -155,3 +155,6 @@ analytics/*
 keep_replit_alive.py
 .replit
 replit.nix
+package-lock.json
+package.json
+CLAUDE.md

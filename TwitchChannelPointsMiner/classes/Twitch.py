@@ -19,7 +19,7 @@ from pathlib import Path
 from secrets import choice, token_hex
 from typing import Dict, Any
 # from urllib.parse import quote
-# from base64 import urlsafe_b64decode
+from base64 import urlsafe_b64decode
 # from datetime import datetime
 
 from TwitchChannelPointsMiner.classes.entities.Campaign import Campaign
@@ -152,7 +152,7 @@ class Twitch(object):
             regex_spade = '"spade_url":"(.*?)"'
             streamer.stream.spade_url = re.search(
                 regex_spade, response).group(1)
-        except requests.exceptions.RequestException as e:
+        except (requests.exceptions.RequestException, AttributeError) as e:
             logger.error(
                 f"Something went wrong during extraction of 'spade_url': {e}")
 
