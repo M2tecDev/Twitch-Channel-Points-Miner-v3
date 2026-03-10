@@ -173,10 +173,10 @@ class Twitch(object):
         json_data["variables"] = {"channel": streamer.username}
         response = self.post_gql_request(json_data)
         if response != {}:
-            if response["data"]["user"]["stream"] is None:
+            user = response.get("data", {}).get("user")
+            if user is None or user["stream"] is None:
                 raise StreamerIsOfflineException
-            else:
-                return response["data"]["user"]
+            return user
 
     def check_streamer_online(self, streamer):
         if time.time() < streamer.offline_at + 60:

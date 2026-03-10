@@ -141,7 +141,6 @@ cython_debug/
 .idea/
 
 # Custom files
-run.py
 chromedriver*
 
 # Folders
@@ -158,3 +157,4 @@ replit.nix
 package-lock.json
 package.json
 CLAUDE.md
+/.claude

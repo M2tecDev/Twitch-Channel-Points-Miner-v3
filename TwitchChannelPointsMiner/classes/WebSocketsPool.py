@@ -286,6 +286,7 @@ class WebSocketsPool:
                                 if (
                                     ws.streamers[streamer_index].is_online
                                     and event.closing_bet_after(current_tmsp) > 0
+                                    and ws.streamers[streamer_index].settings.make_predictions
                                 ):
                                     streamer = ws.streamers[streamer_index]
                                     bet_settings = streamer.settings.bet
@@ -391,6 +392,7 @@ class WebSocketsPool:
                                         ].persistent_annotations(
                                             event_prediction.result["type"],
                                             f"{ws.events_predictions[event_id].title}",
+                                            points=points,
                                         )
                             elif message.type == "prediction-made":
                                 event_prediction.bet_confirmed = True
@@ -399,6 +401,7 @@ class WebSocketsPool:
                                     ws.streamers[streamer_index].persistent_annotations(
                                         "PREDICTION_MADE",
                                         f"Decision: {event_prediction.bet.decision['choice']} - {event_prediction.title}",
+                                        points={"placed": event_prediction.bet.decision.get("amount", 0)},
                                     )
                     elif message.topic == "community-points-channel-v1":
                         if message.type == "community-goal-created":

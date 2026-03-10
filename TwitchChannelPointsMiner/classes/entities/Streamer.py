@@ -222,7 +222,7 @@ class Streamer(object):
             return prediction_window_seconds
 
     # === ANALYTICS === #
-    def persistent_annotations(self, event_type, event_text):
+    def persistent_annotations(self, event_type, event_text, points=None):
         event_type = event_type.upper()
         if event_type in ["WATCH_STREAK", "WIN", "PREDICTION_MADE", "LOSE"]:
             primary_color = (
@@ -241,6 +241,11 @@ class Streamer(object):
                     "text": event_text,
                 },
             }
+            if points:
+                if points.get("placed"):
+                    data["points_placed"] = points["placed"]
+                if points.get("gained") is not None:
+                    data["points_gained"] = points["gained"]
             self.__save_json("annotations", data)
 
     def persistent_series(self, event_type="Watch"):

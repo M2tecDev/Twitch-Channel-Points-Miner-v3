@@ -421,6 +421,19 @@
           </div>
           <i class="fas fa-percent stat-icon-bg"></i>
         </div>
+        <div class="stat-card s-dim">
+          <div class="stat-inner">
+            <div class="stat-label">Net Profit</div>
+            <div class="stat-val" id="bets-profit">--</div>
+          </div>
+          <i class="fas fa-coins stat-icon-bg"></i>
+        </div>
+      </div>
+
+      <!-- Per-streamer profit/loss breakdown -->
+      <div class="bets-breakdown" id="bets-breakdown" hidden>
+        <div class="bets-breakdown-title"><i class="fas fa-chart-bar"></i> Profit / Loss per Streamer</div>
+        <div class="bets-breakdown-grid" id="bets-breakdown-grid"></div>
       </div>
 
       <!-- Filter bar -->
@@ -445,11 +458,12 @@
               <th>Streamer</th>
               <th>Event</th>
               <th>Result</th>
-              <th>Points at Bet</th>
+              <th>Placed</th>
+              <th>Profit / Loss</th>
             </tr>
           </thead>
           <tbody id="bets-tbody">
-            <tr><td colspan="5" class="bets-loading">
+            <tr><td colspan="6" class="bets-loading">
               <i class="fas fa-spinner fa-spin"></i> Loading bets…
             </td></tr>
           </tbody>

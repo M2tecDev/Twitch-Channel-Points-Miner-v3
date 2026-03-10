@@ -195,6 +195,27 @@ def save_config():
     if not data:
         return Response(json.dumps({"error": "No JSON body"}), status=400, mimetype="application/json")
     try:
+        # Re-inject sensitive fields from disk — the client never receives them
+        # (get_config() strips them for security), so they must be preserved
+        # here to avoid erasing passwords on every settings save.
+        existing = _load_or_default()
+
+        # Twitch login password (miner.password)
+        existing_login_pw = existing.get("miner", {}).get("password")
+        if existing_login_pw:
+            data.setdefault("miner", {})["password"] = existing_login_pw
+
+        # Settings UI password (settings_password or miner.settings_password)
+        existing_settings_pw = (
+            existing.get("miner", {}).get("settings_password")
+            or existing.get("settings_password", "")
+        )
+        if existing_settings_pw:
+            if existing.get("miner", {}).get("settings_password"):
+                data.setdefault("miner", {})["settings_password"] = existing_settings_pw
+            else:
+                data["settings_password"] = existing_settings_pw
+
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         logger.info("config.json updated via web UI")

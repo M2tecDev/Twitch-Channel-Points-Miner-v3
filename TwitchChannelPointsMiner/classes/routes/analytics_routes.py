@@ -5,6 +5,7 @@ Split from AnalyticsServer.py — functions are unchanged.
 """
 import json
 import logging
+import math
 import os
 from datetime import datetime
 
@@ -18,6 +19,15 @@ from TwitchChannelPointsMiner.classes.routes.config_routes import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _clean_records(records: list) -> list:
+    """Replace float NaN values with None so json.dumps emits null, not the
+    non-standard literal NaN that browsers refuse to parse."""
+    return [
+        {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
+        for row in records
+    ]
 
 
 # ── Helpers ───────────────────────────────────────────────────
@@ -56,7 +66,7 @@ def filter_datas(start_date, end_date, datas):
         df = pd.DataFrame(datas["series"])
         df["datetime"] = pd.to_datetime(df.x // 1000, unit="s")
         df = df[(df.x >= start_date) & (df.x <= end_date)]
-        datas["series"] = (
+        datas["series"] = _clean_records(
             df.drop(columns="datetime")
             .sort_values(by=["x", "y"], ascending=True)
             .to_dict("records")
@@ -79,7 +89,7 @@ def filter_datas(start_date, end_date, datas):
         df = pd.DataFrame(datas["annotations"])
         df["datetime"] = pd.to_datetime(df.x // 1000, unit="s")
         df = df[(df.x >= start_date) & (df.x <= end_date)]
-        datas["annotations"] = (
+        datas["annotations"] = _clean_records(
             df.drop(columns="datetime")
             .sort_values(by="x", ascending=True)
             .to_dict("records")
@@ -120,9 +130,18 @@ def read_json(streamer, return_response=True):
             return Response(json.dumps(err), status=500, mimetype="application/json")
         return err
 
-    filtered = filter_datas(start_date, end_date, data)
+    try:
+        filtered = filter_datas(start_date, end_date, data)
+        payload  = json.dumps(filtered, default=int)
+    except Exception as e:
+        err = {"error": f"Data processing error for '{streamer}': {e}"}
+        logger.error(err["error"])
+        if return_response:
+            return Response(json.dumps(err), status=500, mimetype="application/json")
+        return err
+
     if return_response:
-        return Response(json.dumps(filtered, default=int), status=200, mimetype="application/json")
+        return Response(payload, status=200, mimetype="application/json")
     return filtered
 
 
@@ -222,17 +241,28 @@ def bets():
             result = COLOR_MAP.get(ann.get("borderColor", ""))
             if not result:
                 continue
-            ts        = ann.get("x", 0)
-            points_at = 0
-            if series:
-                closest   = min(series, key=lambda e: abs(e["x"] - ts))
-                points_at = closest.get("y", 0)
+            ts           = ann.get("x", 0)
+            points_placed = ann.get("points_placed")
+            points_gained = ann.get("points_gained")
+            approx        = False
+            # Fallback for old annotations that predate stored financial data:
+            # estimate the gain/loss from the series balance delta around the
+            # event. Passive gains (watch ticks, bonuses) pollute this, so it
+            # is only an approximation — flagged with approx=True.
+            if points_gained is None and result in ("WIN", "LOSE") and series:
+                before = [e for e in series if e["x"] < ts]
+                after  = [e for e in series if e["x"] >= ts]
+                if before and after:
+                    points_gained = after[0]["y"] - before[-1]["y"]
+                    approx        = True
             all_bets.append({
-                "streamer":  name,
-                "title":     ann.get("label", {}).get("text", ""),
-                "result":    result,
-                "timestamp": ts,
-                "points_at": points_at,
+                "streamer":      name,
+                "title":         ann.get("label", {}).get("text", ""),
+                "result":        result,
+                "timestamp":     ts,
+                "points_placed": points_placed,
+                "points_gained": points_gained,
+                "approx":        approx,
             })
 
     all_bets.sort(key=lambda b: b["timestamp"], reverse=True)

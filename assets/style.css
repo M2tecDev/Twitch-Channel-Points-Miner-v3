@@ -563,7 +563,7 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   top: 0; left: 0; right: 0; height: 3px;
 }
 .top3-card.rank-1::before { background: linear-gradient(90deg, var(--accent), var(--accent-b)); }
-.top3-card.rank-2::before { background: linear-gradient(90deg, var(--text-muted), transparent); }
+.top3-card.rank-2::before { background: linear-gradient(90deg, var(--accent-b), transparent); }
 .top3-card.rank-3::before { background: linear-gradient(90deg, var(--accent2), transparent); }
 
 .top3-rank {
@@ -729,7 +729,7 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
   padding: 0 20px 8px;
 }
 .log-header {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 7px 14px;
   background: var(--bg-2); border: 1px solid var(--border);
   border-top: 2px solid var(--accent2);
@@ -1161,6 +1161,31 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
 .bets-pts      { font-family: var(--font-mono); color: var(--text-muted); text-align: right; }
 .bets-loading  { text-align: center; padding: 32px; color: var(--text-dim); }
 .bets-loading.is-error { color: #ff4545; }
+.bets-delta { font-family: var(--font-mono); text-align: right; white-space: nowrap; }
+.bets-delta.is-profit { color: #36b535; }
+.bets-delta.is-loss   { color: #ff4545; }
+
+/* Per-streamer profit/loss breakdown */
+.bets-breakdown {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 14px 18px; margin-bottom: 14px;
+}
+.bets-breakdown-title {
+  font-size: 11px; font-weight: 700; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;
+}
+.bets-breakdown-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.bets-breakdown-item {
+  background: var(--bg-3); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 8px 14px;
+  display: flex; flex-direction: column; gap: 3px; min-width: 140px;
+}
+.bbd-name a { font-size: 12px; font-weight: 700; color: var(--accent-b); text-decoration: none; }
+.bbd-name a:hover { text-decoration: underline; }
+.bbd-stats { font-size: 11px; color: var(--text-dim); }
+.bbd-profit { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.bbd-profit.is-profit { color: #36b535; }
+.bbd-profit.is-loss   { color: #ff4545; }
 
 .bet-badge {
   display: inline-flex; align-items: center; gap: 5px;
@@ -1248,6 +1273,9 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
 }
 @media (max-width: 700px) {
   .bets-filter-bar  { flex-direction: column; }
+  .log-header > span { width: 100%; margin-right: 0; }
+  .log-filter-group  { flex-wrap: wrap; gap: 4px; }
+  .log-filter-btn    { font-size: 10px; padding: 3px 7px; }
   .settings-toggles .toggle-switch { flex: 1 1 100%; }
   .stc-header       { flex-direction: column; align-items: flex-start; }
   .settings-toast   { right: 8px; left: 8px; }

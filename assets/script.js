@@ -299,24 +299,26 @@ function initMainChart(type = 'area') {
         }
     };
 
-    charts.main = new ApexCharts(document.querySelector('#chart'), opts);
+    const mainEl = document.querySelector('#chart');
+    if (mainEl) mainEl.innerHTML = '';
+    charts.main = new ApexCharts(mainEl, opts);
     charts.main.render();
 }
 
 /** Create weekly bar chart in a container element */
 function initWeeklyChart(containerId, data, title) {
     const key = containerId === 'chart-weekly-global' ? 'weeklyGlobal' : 'weeklyStreamer';
-    destroyChart(key);
 
-    const el = document.getElementById(containerId);
-    if (!el) return;
-
-    const accent = accentColor();
-    const dark   = state.darkMode;
-
-    // Reorder Sun→Sat to Mon→Sun for display
+    const accent    = accentColor();
+    const dark      = state.darkMode;
     const reordered = [1,2,3,4,5,6,0].map(i => data[i]);
     const labels    = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const colors    = reordered.map(v => v === Math.max(...reordered) || Math.max(...reordered) === 0 ? accent : accentAlt());
+
+    destroyChart(key);
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = ''; // clear any residual SVG if we end up here via theme change
 
     const opts = {
         ...baseChartOpts(),
@@ -331,17 +333,14 @@ function initWeeklyChart(containerId, data, title) {
             bar: { borderRadius: 4, columnWidth: '55%', distributed: true }
         },
         dataLabels: { enabled: false },
-        colors: reordered.map(v => v === Math.max(...reordered) || Math.max(...reordered) === 0 ? accent : accentAlt()),
+        colors: colors,
         xaxis: { categories: labels, labels: { style: { colors: dark ? '#9a9080' : '#666', fontSize: '11px' } } },
         yaxis: { labels: { formatter: v => fmt(v), style: { colors: dark ? '#9a9080' : '#666', fontSize: '10px' } } },
         tooltip: {
             theme: dark ? 'dark' : 'light',
             shared: false,
-            fillSeriesColor: false,      // prevents bar colour leaking into tooltip bg
-            style: {
-                fontSize: '12px',
-                fontFamily: "'JetBrains Mono', monospace",
-            },
+            fillSeriesColor: false,
+            style: { fontSize: '12px', fontFamily: "'JetBrains Mono', monospace" },
             y: { formatter: v => v > 0 ? `+${fmt(v)} pts` : `${fmt(v)} pts` }
         },
         title: { text: title || '', style: { fontSize: '11px', fontFamily: "'Inter',sans-serif", color: dark ? '#7a7470' : '#999' } },
@@ -350,6 +349,10 @@ function initWeeklyChart(containerId, data, title) {
 
     charts[key] = new ApexCharts(el, opts);
     charts[key].render();
+    // ApexCharts measures the container synchronously on render(). If the
+    // element was just un-hidden it may still report width=0 in some browsers.
+    // A deferred resize event forces ApexCharts to re-measure and redraw.
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
 }
 
 /** Create multi-streamer compare chart */
@@ -357,6 +360,7 @@ function initCompareChart(seriesArr) {
     destroyChart('compare');
     const el = document.getElementById('chart-compare');
     if (!el) return;
+    el.innerHTML = ''; // clear residual SVG from previous chart instance
 
     const dark   = state.darkMode;
     const colors = [accentColor(), accentAlt(), '#3498db', '#2ecc71', '#e67e22', '#1abc9c'];
@@ -588,6 +592,11 @@ async function renderDashboard() {
         .slice(0, 3);
 
     await Promise.allSettled(top3.map(s => ensureSeriesCache(s.name)));
+    // Wait TWO animation frames so the browser fully commits layout for the
+    // now-visible container before ApexCharts measures it.
+    // RAF fires before style/layout; a second RAF fires after that layout pass,
+    // guaranteeing the element reports its real clientWidth (not 0).
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     // Weekly global chart (aggregate all cached series)
     let combined = [];
@@ -1004,6 +1013,7 @@ async function renderCompare() {
 
     // Ensure cache for all selected
     await Promise.allSettled(names.map(n => ensureSeriesCache(n)));
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     // Build series array
     const seriesArr = names
@@ -1670,7 +1680,7 @@ async function renderBets() {
     showView('view-bets');
     document.title = 'Bet History — CPM v3';
     var tbody = document.getElementById('bets-tbody');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="bets-loading"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="bets-loading"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
     try {
         var r = await fetch('./bets');
         if (!r.ok) throw new Error(r.status);
@@ -1684,6 +1694,48 @@ async function renderBets() {
         s_('bets-wins',  String(wins));
         s_('bets-losses',String(losses));
         s_('bets-winrate', rate+'%');
+
+        // Net profit/loss from resolved bets (uses stored points_gained, not series delta)
+        var totalProfit = 0; var hasAnyGained = false;
+        var streamerMap = {};
+        bets.forEach(function(b) {
+            if (!streamerMap[b.streamer]) streamerMap[b.streamer] = { wins: 0, losses: 0, profit: 0, hasData: false };
+            var sm = streamerMap[b.streamer];
+            if (b.result === 'WIN')  sm.wins++;
+            if (b.result === 'LOSE') sm.losses++;
+            if (b.points_gained !== null && b.points_gained !== undefined) {
+                sm.profit += b.points_gained; sm.hasData = true;
+                totalProfit += b.points_gained; hasAnyGained = true;
+                if (!b.approx) { sm.hasExact = true; }
+            }
+        });
+        var profitEl = document.getElementById('bets-profit');
+        if (profitEl) {
+            profitEl.textContent = hasAnyGained ? (totalProfit >= 0 ? '+' : '') + fmt(totalProfit) : '--';
+            profitEl.className = 'stat-val' + (hasAnyGained ? (totalProfit > 0 ? ' is-positive' : (totalProfit < 0 ? ' is-negative' : '')) : '');
+        }
+
+        // Per-streamer breakdown
+        var bdGrid = document.getElementById('bets-breakdown-grid');
+        var bdSection = document.getElementById('bets-breakdown');
+        if (bdGrid && bdSection) {
+            var sNames = Object.keys(streamerMap).sort();
+            if (sNames.length > 0) {
+                bdGrid.innerHTML = sNames.map(function(sn) {
+                    var sm = streamerMap[sn];
+                    var profitCls = sm.hasData ? (sm.profit > 0 ? 'is-profit' : (sm.profit < 0 ? 'is-loss' : '')) : '';
+                    var profitStr = sm.hasData ? (sm.profit >= 0 ? '+' : '') + fmt(sm.profit) : '—';
+                    return '<div class="bets-breakdown-item">' +
+                        '<div class="bbd-name"><a href="#streamer/' + encodeURIComponent(sn) + '">' + esc(sn) + '</a></div>' +
+                        '<div class="bbd-stats">W: ' + sm.wins + ' / L: ' + sm.losses + '</div>' +
+                        '<div class="bbd-profit ' + profitCls + '">' + profitStr + '</div>' +
+                        '</div>';
+                }).join('');
+                bdSection.hidden = false;
+            } else {
+                bdSection.hidden = true;
+            }
+        }
         var sf = document.getElementById('bets-filter-streamer');
         if (sf) {
             var names = [];
@@ -1697,20 +1749,33 @@ async function renderBets() {
             var sf2 = (document.getElementById('bets-filter-streamer')||{}).value||'';
             var rf  = (document.getElementById('bets-filter-result')||{}).value||'';
             var filtered = (_betsData||[]).filter(function(b){ return (!sf2||b.streamer===sf2)&&(!rf||b.result===rf); });
-            if (!filtered.length) { tbody.innerHTML='<tr><td colspan="5" class="bets-loading">No bets match the filter.</td></tr>'; return; }
+            if (!filtered.length) { tbody.innerHTML='<tr><td colspan="6" class="bets-loading">No bets match the filter.</td></tr>'; return; }
             var BADGES = {
                 WIN:    '<span class="bet-badge bet-win"><i class="fas fa-trophy"></i> WIN</span>',
                 LOSE:   '<span class="bet-badge bet-lose"><i class="fas fa-times"></i> LOSE</span>',
                 PLACED: '<span class="bet-badge bet-placed"><i class="fas fa-hourglass-half"></i> PLACED</span>',
             };
-            // ✅ FIX: esc() auf alle Felder die aus der API kommen
             tbody.innerHTML = filtered.map(function(b){
+                var gained = b.points_gained;
+                var gainedHtml;
+                if (gained === null || gained === undefined) {
+                    gainedHtml = '<td class="bets-delta">—</td>';
+                } else {
+                    var cls    = gained > 0 ? 'is-profit' : (gained < 0 ? 'is-loss' : '');
+                    var prefix = (b.approx ? '~' : '') + (gained >= 0 ? '+' : '');
+                    var title  = b.approx ? ' title="Approximate — estimated from balance history"' : '';
+                    gainedHtml = '<td class="bets-delta ' + cls + '"' + title + '>' + prefix + fmt(gained) + '</td>';
+                }
+                var placedHtml = (b.points_placed !== null && b.points_placed !== undefined)
+                    ? '<td class="bets-pts">'+fmt(b.points_placed)+'</td>'
+                    : '<td class="bets-pts">—</td>';
                 return '<tr>'+
                     '<td class="bets-ts">'+esc(new Date(b.timestamp).toLocaleString('de-DE'))+'</td>'+
                     '<td class="bets-streamer"><a href="#streamer/'+encodeURIComponent(b.streamer)+'">'+esc(b.streamer)+'</a></td>'+
                     '<td class="bets-title" title="'+esc(b.title||'')+'">'+esc(b.title||'—')+'</td>'+
                     '<td>'+(BADGES[b.result]||esc(b.result))+'</td>'+
-                    '<td class="bets-pts">'+fmt(b.points_at)+'</td>'+
+                    placedHtml+
+                    gainedHtml+
                 '</tr>';
             }).join('');
         }
@@ -1720,7 +1785,7 @@ async function renderBets() {
         if(sfEl) sfEl.onchange=renderTable;
         if(rfEl) rfEl.onchange=renderTable;
     } catch(err) {
-        if(tbody) tbody.innerHTML='<tr><td colspan="5" class="bets-loading is-error"><i class="fas fa-triangle-exclamation"></i> '+esc(err.message)+'</td></tr>';
+        if(tbody) tbody.innerHTML='<tr><td colspan="6" class="bets-loading is-error"><i class="fas fa-triangle-exclamation"></i> '+esc(err.message)+'</td></tr>';
     }
     renderSidebar();
 }
