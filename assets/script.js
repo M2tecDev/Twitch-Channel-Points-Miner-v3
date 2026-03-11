@@ -63,6 +63,11 @@ const ctrl = {
 // ── Timers ────────────────────────────────────────────────────
 let refreshTimer = null;
 
+// ── Dashboard render guard ────────────────────────────────────
+// Incremented on every renderDashboard() call; each call captures
+// its own value and bails out after any await if a newer call has started.
+let _dashboardSeq = 0;
+
 // ─────────────────────────────────────────────────────────────
 //  UTILITIES
 // ─────────────────────────────────────────────────────────────
@@ -167,7 +172,7 @@ function weeklyAgg(series) {
 
     dayMap.forEach(({ first, last }, key) => {
         const gain = last - first;
-        if (gain === 0) return;
+        if (gain <= 0) return; // skip zero and negative (points spent / resets)
         const dow = new Date(key).getDay();
         totals[dow] += gain;
         counts[dow]++;
@@ -555,6 +560,7 @@ function showView(id) {
 // ─────────────────────────────────────────────────────────────
 
 async function renderDashboard() {
+    const mySeq = ++_dashboardSeq; // guard: any newer call will have a higher seq
     showView('view-dashboard');
 
     const ts = new Date().toLocaleTimeString('en-GB');
@@ -592,11 +598,18 @@ async function renderDashboard() {
         .slice(0, 3);
 
     await Promise.allSettled(top3.map(s => ensureSeriesCache(s.name)));
+
+    // Bail out if a newer renderDashboard() call has since started (navigation race)
+    if (mySeq !== _dashboardSeq) return;
+
     // Wait TWO animation frames so the browser fully commits layout for the
     // now-visible container before ApexCharts measures it.
     // RAF fires before style/layout; a second RAF fires after that layout pass,
     // guaranteeing the element reports its real clientWidth (not 0).
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    // Bail out again after the RAF wait (navigation may have happened during it)
+    if (mySeq !== _dashboardSeq) return;
 
     // Weekly global chart (aggregate all cached series)
     let combined = [];
@@ -1268,10 +1281,15 @@ async function router() {
 
     clearTimeout(refreshTimer);
 
+    // Invalidate any renderDashboard() call that is still awaiting async work.
+    // Without this, a stale call started before this navigation can complete its
+    // awaits and overwrite the chart that the new route just drew.
+    _dashboardSeq++;
+
     if (ctrl.preload) {
         ctrl.preload.abort();
         ctrl.preload = null;
-        state.preloadDone = false; // allows restart 
+        state.preloadDone = false; // allows restart
     }
     switch (route.view) {
         case 'dashboard':
