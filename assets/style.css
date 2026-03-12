@@ -332,6 +332,8 @@ a:hover { color: var(--accent-b); }
   font-size: 11px; color: var(--accent-b);
   display: flex; gap: 6px; align-items: flex-start;
 }
+/* display:flex above overrides UA [hidden]{display:none} — re-apply it explicitly */
+#compare-hint[hidden] { display: none; }
 
 /* ── MAIN CONTENT ─────────────────────────── */
 .app-main {
