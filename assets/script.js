@@ -63,6 +63,11 @@ const ctrl = {
 // ── Timers ────────────────────────────────────────────────────
 let refreshTimer = null;
 
+// ── Dashboard render guard ────────────────────────────────────
+// Incremented on every renderDashboard() call; each call captures
+// its own value and bails out after any await if a newer call has started.
+let _dashboardSeq = 0;
+
 // ─────────────────────────────────────────────────────────────
 //  UTILITIES
 // ─────────────────────────────────────────────────────────────
@@ -167,7 +172,7 @@ function weeklyAgg(series) {
 
     dayMap.forEach(({ first, last }, key) => {
         const gain = last - first;
-        if (gain === 0) return;
+        if (gain <= 0) return; // skip zero and negative (points spent / resets)
         const dow = new Date(key).getDay();
         totals[dow] += gain;
         counts[dow]++;
@@ -318,14 +323,21 @@ function initWeeklyChart(containerId, data, title) {
     destroyChart(key);
     const el = document.getElementById(containerId);
     if (!el) return;
-    el.innerHTML = ''; // clear any residual SVG if we end up here via theme change
+    el.innerHTML = '';
 
-    const opts = {
+    // getBoundingClientRect() forces synchronous layout — returns the real
+    // CSS-grid-committed pixel width even when called inside a RAF callback.
+    // Passing it explicitly to ApexCharts avoids the library snapshotting a
+    // stale or zero container width from its own internal measurement.
+    const containerWidth = el.getBoundingClientRect().width;
+
+    const buildOpts = (w) => ({
         ...baseChartOpts(),
         series: [{ name: 'Avg. Gain', data: reordered }],
         chart: {
             ...baseChartOpts().chart,
             type: 'bar', height: 200,
+            ...(w > 0 ? { width: w } : {}),
             toolbar: { show: false },
             sparkline: { enabled: false }
         },
@@ -345,14 +357,32 @@ function initWeeklyChart(containerId, data, title) {
         },
         title: { text: title || '', style: { fontSize: '11px', fontFamily: "'Inter',sans-serif", color: dark ? '#7a7470' : '#999' } },
         legend: { show: false }
-    };
+    });
 
-    charts[key] = new ApexCharts(el, opts);
-    charts[key].render();
-    // ApexCharts measures the container synchronously on render(). If the
-    // element was just un-hidden it may still report width=0 in some browsers.
-    // A deferred resize event forces ApexCharts to re-measure and redraw.
-    setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+    if (containerWidth > 0) {
+        // Container already has real dimensions — render immediately at the correct width.
+        charts[key] = new ApexCharts(el, buildOpts(containerWidth));
+        charts[key].render();
+    } else {
+        // Container is still zero-wide (view not yet laid out).
+        // Render a placeholder and swap it with a correctly-sized chart the
+        // moment the container gets real pixel dimensions.
+        charts[key] = new ApexCharts(el, buildOpts(0));
+        charts[key].render();
+
+        const chartRef = charts[key];
+        const ro = new ResizeObserver(entries => {
+            const w = entries[0]?.contentRect.width || 0;
+            if (w === 0) return;
+            ro.disconnect();
+            if (charts[key] !== chartRef) return;
+            chartRef.destroy();
+            el.innerHTML = '';
+            charts[key] = new ApexCharts(el, buildOpts(w));
+            charts[key].render();
+        });
+        ro.observe(el);
+    }
 }
 
 /** Create multi-streamer compare chart */
@@ -555,6 +585,7 @@ function showView(id) {
 // ─────────────────────────────────────────────────────────────
 
 async function renderDashboard() {
+    const mySeq = ++_dashboardSeq; // guard: any newer call will have a higher seq
     showView('view-dashboard');
 
     const ts = new Date().toLocaleTimeString('en-GB');
@@ -592,11 +623,21 @@ async function renderDashboard() {
         .slice(0, 3);
 
     await Promise.allSettled(top3.map(s => ensureSeriesCache(s.name)));
-    // Wait TWO animation frames so the browser fully commits layout for the
-    // now-visible container before ApexCharts measures it.
-    // RAF fires before style/layout; a second RAF fires after that layout pass,
-    // guaranteeing the element reports its real clientWidth (not 0).
+
+    // Bail out if a newer renderDashboard() call has since started (navigation race)
+    if (mySeq !== _dashboardSeq) return;
+
+    // Wait TWO animation frames + one macrotask turn.
+    // - RAF 1/2 advance past the initial style-recalc triggered by showView()
+    // - setTimeout(0) yields to the browser's rendering pipeline (layout+paint)
+    //   so the two-col-grid has fully distributed its 1fr columns before we
+    //   hand the container to ApexCharts.  A cache-hit path reaches here in
+    //   microseconds — without this yield the grid width can still be 0.
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Bail out again after the wait (navigation may have happened during it)
+    if (mySeq !== _dashboardSeq) return;
 
     // Weekly global chart (aggregate all cached series)
     let combined = [];
@@ -1120,6 +1161,10 @@ function applyTheme(theme) {
         state.seriesCache.forEach(d => { combined = combined.concat(d.series || []); });
         if (combined.length > 0) {
             const agg = weeklyAgg(combined);
+            // Direct call — same as the streamer case which works reliably.
+            // setAttribute('data-theme') above updates CSS variables synchronously;
+            // getComputedStyle() (used by accentColor/accentAlt) forces immediate
+            // recalc, so no RAF is needed to pick up new colour values.
             initWeeklyChart('chart-weekly-global', agg, 'Avg. gain per weekday');
         }
     }
@@ -1268,10 +1313,15 @@ async function router() {
 
     clearTimeout(refreshTimer);
 
+    // Invalidate any renderDashboard() call that is still awaiting async work.
+    // Without this, a stale call started before this navigation can complete its
+    // awaits and overwrite the chart that the new route just drew.
+    _dashboardSeq++;
+
     if (ctrl.preload) {
         ctrl.preload.abort();
         ctrl.preload = null;
-        state.preloadDone = false; // allows restart 
+        state.preloadDone = false; // allows restart
     }
     switch (route.view) {
         case 'dashboard':
@@ -1689,8 +1739,13 @@ async function renderBets() {
         var wins   = bets.filter(function(b){ return b.result==='WIN'; }).length;
         var losses = bets.filter(function(b){ return b.result==='LOSE'; }).length;
         var rate   = (wins+losses)>0 ? Math.round(wins/(wins+losses)*100) : 0;
+        // Each resolved bet has TWO annotations (PLACED + WIN/LOSE), so bets.length
+        // double-counts. True total = count of PLACED annotations (one per bet placed).
+        // Fallback to wins+losses for old data that predates PLACED annotations.
+        var placedCount = bets.filter(function(b){ return b.result==='PLACED'; }).length;
+        var totalBets   = placedCount > 0 ? placedCount : (wins + losses);
         function s_(id, v) { var el=document.getElementById(id); if(el) el.textContent=v; }
-        s_('bets-total', String(bets.length));
+        s_('bets-total', String(totalBets));
         s_('bets-wins',  String(wins));
         s_('bets-losses',String(losses));
         s_('bets-winrate', rate+'%');
