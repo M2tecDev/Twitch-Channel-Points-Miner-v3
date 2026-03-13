@@ -1737,6 +1737,8 @@ function _checkSettingsPassword(config, onSuccess) {
 
 /* ─── VIEW: BETS ─────────────────────────────────────────────────────────── */
 async function renderBets() {
+    var currentPage = 1;
+    var pageSize    = 10;
     showView('view-bets');
     document.title = 'Bet History — CPM v3';
     var tbody = document.getElementById('bets-tbody');
@@ -1764,7 +1766,7 @@ async function renderBets() {
         var totalProfit = 0; var hasAnyGained = false;
         var streamerMap = {};
         bets.forEach(function(b) {
-            if (!streamerMap[b.streamer]) streamerMap[b.streamer] = { wins: 0, losses: 0, profit: 0, hasData: false };
+            if (!streamerMap[b.streamer]) streamerMap[b.streamer] = { wins: 0, losses: 0, profit: 0, hasData: false, hasExact: false, currentStreak: 0, maxStreak: 0 };
             var sm = streamerMap[b.streamer];
             if (b.result === 'WIN')  sm.wins++;
             if (b.result === 'LOSE') sm.losses++;
@@ -1773,6 +1775,14 @@ async function renderBets() {
                 totalProfit += b.points_gained; hasAnyGained = true;
                 if (!b.approx) { sm.hasExact = true; }
             }
+        });
+        // Streak computation — must process oldest-first
+        var betsChron = bets.slice().reverse();   // oldest-first copy; bets stays newest-first
+        betsChron.forEach(function(b) {
+            var sm = streamerMap[b.streamer];
+            if (!sm) return;
+            if (b.result === 'WIN')  { sm.currentStreak++; if (sm.currentStreak > sm.maxStreak) sm.maxStreak = sm.currentStreak; }
+            if (b.result === 'LOSE') { sm.currentStreak = 0; }
         });
         var profitEl = document.getElementById('bets-profit');
         if (profitEl) {
@@ -1801,6 +1811,29 @@ async function renderBets() {
                 bdSection.hidden = true;
             }
         }
+        // Win streak section
+        var streakGrid    = document.getElementById('bets-streak-grid');
+        var streakSection = document.getElementById('bets-streak');
+        if (streakGrid && streakSection) {
+            var streakNames = Object.keys(streamerMap)
+                .filter(function(sn){ return streamerMap[sn].maxStreak > 0; })
+                .sort(function(a,b){ return streamerMap[b].maxStreak - streamerMap[a].maxStreak; })
+                .slice(0, 5);
+            if (streakNames.length > 0) {
+                streakGrid.innerHTML = streakNames.map(function(sn) {
+                    return '<div class="bets-breakdown-item">' +
+                        '<div class="bbd-name"><a href="#streamer/' + encodeURIComponent(sn) + '">' + esc(sn) + '</a></div>' +
+                        '<div class="bbd-streak">🔥 ' + streamerMap[sn].maxStreak + '</div>' +
+                        '</div>';
+                }).join('');
+                streakSection.hidden = false;
+            } else {
+                streakSection.hidden = true;
+            }
+        }
+        // Hide the row wrapper when both panels are hidden (no bets data at all)
+        var bdRow = document.querySelector('.bets-breakdown-row');
+        if (bdRow) bdRow.hidden = !!(bdSection && bdSection.hidden && streakSection && streakSection.hidden);
         var sf = document.getElementById('bets-filter-streamer');
         if (sf) {
             var names = [];
@@ -1814,13 +1847,23 @@ async function renderBets() {
             var sf2 = (document.getElementById('bets-filter-streamer')||{}).value||'';
             var rf  = (document.getElementById('bets-filter-result')||{}).value||'';
             var filtered = (_betsData||[]).filter(function(b){ return (!sf2||b.streamer===sf2)&&(!rf||b.result===rf); });
-            if (!filtered.length) { tbody.innerHTML='<tr><td colspan="6" class="bets-loading">No bets match the filter.</td></tr>'; return; }
+            if (!filtered.length) {
+                tbody.innerHTML='<tr><td colspan="6" class="bets-loading">No bets match the filter.</td></tr>';
+                var pgEl = document.getElementById('bets-pagination');
+                if (pgEl) pgEl.hidden = true;
+                return;
+            }
+            var totalPages = pageSize === Infinity ? 1 : Math.ceil(filtered.length / pageSize);
+            currentPage = Math.min(currentPage, Math.max(1, totalPages));
+            var pgStart = pageSize === Infinity ? 0 : (currentPage - 1) * pageSize;
+            var pgEnd   = pageSize === Infinity ? filtered.length : currentPage * pageSize;
+            var visible = filtered.slice(pgStart, pgEnd);
             var BADGES = {
                 WIN:    '<span class="bet-badge bet-win"><i class="fas fa-trophy"></i> WIN</span>',
                 LOSE:   '<span class="bet-badge bet-lose"><i class="fas fa-times"></i> LOSE</span>',
                 PLACED: '<span class="bet-badge bet-placed"><i class="fas fa-hourglass-half"></i> PLACED</span>',
             };
-            tbody.innerHTML = filtered.map(function(b){
+            tbody.innerHTML = visible.map(function(b){
                 var gained = b.points_gained;
                 var gainedHtml;
                 if (gained === null || gained === undefined) {
@@ -1843,12 +1886,45 @@ async function renderBets() {
                     gainedHtml+
                 '</tr>';
             }).join('');
+            renderPagination(totalPages, filtered.length);
+        }
+        function renderPagination(totalPages, totalCount) {
+            var pgEl = document.getElementById('bets-pagination');
+            if (!pgEl) return;
+            if (totalPages <= 1 && pageSize !== Infinity) { pgEl.hidden = true; return; }
+            pgEl.hidden = false;
+            var label = pageSize === Infinity
+                ? 'All ' + totalCount + ' entries'
+                : 'Page ' + currentPage + ' of ' + totalPages;
+            pgEl.innerHTML =
+                '<button id="pg-prev"' + (currentPage === 1 ? ' disabled' : '') + '>← Prev</button>' +
+                '<span class="pg-label">' + esc(label) + '</span>' +
+                '<button id="pg-next"' + (currentPage === totalPages ? ' disabled' : '') + '>Next →</button>' +
+                '<span class="pg-label" style="margin-left:8px">Per page:</span>' +
+                '<select id="pg-size">' +
+                    '<option value="10"'  + (pageSize === 10       ? ' selected' : '') + '>10</option>' +
+                    '<option value="25"'  + (pageSize === 25       ? ' selected' : '') + '>25</option>' +
+                    '<option value="50"'  + (pageSize === 50       ? ' selected' : '') + '>50</option>' +
+                    '<option value="Inf"' + (pageSize === Infinity ? ' selected' : '') + '>All</option>' +
+                '</select>';
+            document.getElementById('pg-prev').onclick = function() {
+                if (currentPage > 1) { currentPage--; renderTable(); }
+            };
+            document.getElementById('pg-next').onclick = function() {
+                if (currentPage < totalPages) { currentPage++; renderTable(); }
+            };
+            document.getElementById('pg-size').onchange = function() {
+                pageSize = this.value === 'Inf' ? Infinity : parseInt(this.value, 10);
+                currentPage = 1;
+                renderTable();
+            };
         }
         renderTable();
         var sfEl=document.getElementById('bets-filter-streamer');
         var rfEl=document.getElementById('bets-filter-result');
-        if(sfEl) sfEl.onchange=renderTable;
-        if(rfEl) rfEl.onchange=renderTable;
+        function resetAndRender() { currentPage = 1; renderTable(); }
+        if(sfEl) sfEl.onchange=resetAndRender;
+        if(rfEl) rfEl.onchange=resetAndRender;
     } catch(err) {
         if(tbody) tbody.innerHTML='<tr><td colspan="6" class="bets-loading is-error"><i class="fas fa-triangle-exclamation"></i> '+esc(err.message)+'</td></tr>';
     }

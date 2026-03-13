@@ -344,7 +344,7 @@ class WebSocketsPool:
                             event_prediction = ws.events_predictions[event_id]
                             if (
                                 message.type == "prediction-result"
-                                and event_prediction.bet_confirmed
+                                and (event_prediction.bet_confirmed or event_prediction.bet_placed)
                             ):
                                 points = event_prediction.parse_result(
                                     message.data["prediction"]["result"]
@@ -403,6 +403,39 @@ class WebSocketsPool:
                                         f"Decision: {event_prediction.bet.decision['choice']} - {event_prediction.title}",
                                         points={"placed": event_prediction.bet.decision.get("amount", 0)},
                                     )
+                        elif (                                          # event_id NOT in events_predictions
+                            message.type == "prediction-result"        # only resolved predictions
+                            and Settings.enable_analytics
+                        ):
+                            # Restart-recovery path:
+                            # The prediction was placed in a previous process run.
+                            # events_predictions has no context for it, but the
+                            # predictions-user-v1 payload carries all financial data.
+                            pred        = message.data["prediction"]
+                            result_data = pred.get("result", {})
+                            result_type = result_data.get("type")       # "WIN" / "LOSE" / "REFUND"
+
+                            # "points" is the amount the user placed on this prediction
+                            # (top-level field in the predictions-user-v1 user-prediction object).
+                            # If absent or field name differs across API versions, defaults to 0 —
+                            # the WIN/LOSE result type is still recorded correctly; only the
+                            # placed/gained amounts in the annotation will show as 0.
+                            points_placed = pred.get("points", 0) or 0
+                            points_won    = result_data.get("points_won") or 0
+
+                            if result_type == "WIN":
+                                points_gained = points_won - points_placed
+                            elif result_type == "LOSE":
+                                points_gained = -points_placed
+                            else:                                       # REFUND or unknown
+                                points_gained = 0
+
+                            if result_type:
+                                ws.streamers[streamer_index].persistent_annotations(
+                                    result_type,
+                                    "Prediction (restored after restart)",
+                                    points={"placed": points_placed, "gained": points_gained},
+                                )
                     elif message.topic == "community-points-channel-v1":
                         if message.type == "community-goal-created":
                             # TODO Untested, hard to find this happening live

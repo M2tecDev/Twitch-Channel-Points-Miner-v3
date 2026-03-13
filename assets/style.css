@@ -1188,6 +1188,54 @@ html:not(.dark) .input::-webkit-calendar-picker-indicator { filter: none; opacit
 .bbd-profit { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text-muted); }
 .bbd-profit.is-profit { color: #36b535; }
 .bbd-profit.is-loss   { color: #ff4545; }
+.bbd-streak { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.bets-breakdown-row > .bets-breakdown { margin-bottom: 0; }
+
+/* Bets — Breakdown row (2-column grid) */
+.bets-breakdown-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+}
+@media (max-width: 768px) {
+    .bets-breakdown-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Bets — Pagination */
+.bets-pagination {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+    font-size: 13px;
+}
+.bets-pagination button {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-3);
+    color: var(--text);
+    cursor: pointer;
+}
+.bets-pagination button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.bets-pagination select {
+    padding: 3px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-3);
+    color: var(--text);
+    font-size: 13px;
+}
+.bets-pagination .pg-label {
+    color: var(--text-muted);
+}
 
 .bet-badge {
   display: inline-flex; align-items: center; gap: 5px;

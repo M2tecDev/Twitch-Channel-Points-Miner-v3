@@ -155,6 +155,7 @@ class Twitch(object):
         except (requests.exceptions.RequestException, AttributeError) as e:
             logger.error(
                 f"Something went wrong during extraction of 'spade_url': {e}")
+            raise StreamerIsOfflineException
 
     def get_broadcast_id(self, streamer):
         json_data = copy.deepcopy(GQLOperations.WithIsStreamLiveQuery)
@@ -579,6 +580,11 @@ class Twitch(object):
                             continue
                         # End of fix for 2024/5 API Change
                         ##################################
+                        if streamers[index].stream.spade_url is None:
+                            logger.warning(
+                                f"Spade URL not set for {streamers[index]}, skipping minute watched"
+                            )
+                            continue
                         response = requests.post(
                             streamers[index].stream.spade_url,
                             data=streamers[index].stream.encode_payload(),
@@ -759,6 +765,13 @@ class Twitch(object):
                                 "event": Events.BET_FAILED,
                             },
                         )
+                    elif (
+                        "data" in response
+                        and "makePrediction" in response["data"]
+                        and "error" in response["data"]["makePrediction"]
+                        and response["data"]["makePrediction"]["error"] is None
+                    ):
+                        event.bet_placed = True
                 else:
                     logger.info(
                         f"Bet won't be placed as the amount {_millify(decision['amount'])} is less than the minimum required 10",

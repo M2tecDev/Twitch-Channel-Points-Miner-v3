@@ -430,10 +430,16 @@
         </div>
       </div>
 
-      <!-- Per-streamer profit/loss breakdown -->
-      <div class="bets-breakdown" id="bets-breakdown" hidden>
-        <div class="bets-breakdown-title"><i class="fas fa-chart-bar"></i> Profit / Loss per Streamer</div>
-        <div class="bets-breakdown-grid" id="bets-breakdown-grid"></div>
+      <!-- Per-streamer profit/loss breakdown + win streak -->
+      <div class="bets-breakdown-row">
+        <div class="bets-breakdown" id="bets-breakdown" hidden>
+          <div class="bets-breakdown-title"><i class="fas fa-chart-bar"></i> Profit / Loss per Streamer</div>
+          <div class="bets-breakdown-grid" id="bets-breakdown-grid"></div>
+        </div>
+        <div class="bets-breakdown" id="bets-streak" hidden>
+          <div class="bets-breakdown-title"><i class="fas fa-trophy"></i> Best Win Streaks</div>
+          <div id="bets-streak-grid" class="bets-breakdown-grid"></div>
+        </div>
       </div>
 
       <!-- Filter bar -->
@@ -468,6 +474,7 @@
             </td></tr>
           </tbody>
         </table>
+        <div id="bets-pagination" class="bets-pagination" hidden></div>
       </div>
 
     </div><!-- /view-bets -->
