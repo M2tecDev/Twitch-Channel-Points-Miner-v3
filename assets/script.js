@@ -639,12 +639,21 @@ async function renderDashboard() {
     // Bail out again after the wait (navigation may have happened during it)
     if (mySeq !== _dashboardSeq) return;
 
-    // Weekly global chart (aggregate all cached series)
-    let combined = [];
-    state.seriesCache.forEach(d => { combined = combined.concat(d.series || []); });
-
-    if (combined.length > 0) {
-        const agg = weeklyAgg(combined);
+    // Weekly global chart — aggregate per-streamer, then average across streamers.
+    // IMPORTANT: do NOT concat all series into one array and call weeklyAgg() on it.
+    // Each streamer's .y values are their own absolute channel-point totals (e.g.
+    // streamer A ≈ 100 000, streamer B ≈ 25 000).  Mixing them in a single array
+    // makes weeklyAgg compute gain = B.lastOfDay − A.firstOfDay = −75 000 → filtered
+    // as ≤ 0, so every weekday ends up with gain = 0 and the chart looks blank.
+    const perStreamer = [];
+    state.seriesCache.forEach(d => {
+        if (d.series && d.series.length > 0) perStreamer.push(weeklyAgg(d.series));
+    });
+    if (perStreamer.length > 0) {
+        const agg = [0,1,2,3,4,5,6].map(day => {
+            const vals = perStreamer.map(a => a[day]).filter(v => v > 0);
+            return vals.length > 0 ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : 0;
+        });
         initWeeklyChart('chart-weekly-global', agg, 'Avg. gain per weekday');
     }
 
@@ -1157,14 +1166,15 @@ function applyTheme(theme) {
     }
 
     if (state.view === 'dashboard') {
-        let combined = [];
-        state.seriesCache.forEach(d => { combined = combined.concat(d.series || []); });
-        if (combined.length > 0) {
-            const agg = weeklyAgg(combined);
-            // Direct call — same as the streamer case which works reliably.
-            // setAttribute('data-theme') above updates CSS variables synchronously;
-            // getComputedStyle() (used by accentColor/accentAlt) forces immediate
-            // recalc, so no RAF is needed to pick up new colour values.
+        const perStreamer = [];
+        state.seriesCache.forEach(d => {
+            if (d.series && d.series.length > 0) perStreamer.push(weeklyAgg(d.series));
+        });
+        if (perStreamer.length > 0) {
+            const agg = [0,1,2,3,4,5,6].map(day => {
+                const vals = perStreamer.map(a => a[day]).filter(v => v > 0);
+                return vals.length > 0 ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : 0;
+            });
             initWeeklyChart('chart-weekly-global', agg, 'Avg. gain per weekday');
         }
     }
