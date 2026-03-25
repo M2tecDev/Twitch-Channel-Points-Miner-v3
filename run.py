@@ -26,6 +26,12 @@ from TwitchChannelPointsMiner.classes.entities.Bet import (
 )
 from TwitchChannelPointsMiner.classes.entities.Streamer import Streamer, StreamerSettings
 from TwitchChannelPointsMiner.logger import LoggerSettings
+from TwitchChannelPointsMiner.classes.Discord import Discord
+from TwitchChannelPointsMiner.classes.Matrix import Matrix
+from TwitchChannelPointsMiner.classes.Telegram import Telegram
+from TwitchChannelPointsMiner.classes.Webhook import Webhook
+from TwitchChannelPointsMiner.classes.Pushover import Pushover
+from TwitchChannelPointsMiner.classes.Gotify import Gotify
 
 CONFIG_PATH = os.path.join(Path(__file__).parent.absolute(), "config.json")
 
@@ -89,9 +95,59 @@ def build_streamer_settings(s_cfg):
     )
 
 
+def build_notification_settings(notif_cfg: dict) -> dict:
+    """Returns provider_name → instance for each enabled, configured provider."""
+    result = {}
+    if not notif_cfg:
+        return result
+
+    dc = notif_cfg.get("discord", {})
+    if dc.get("enabled") and dc.get("webhook_api"):
+        result["discord"] = Discord(dc["webhook_api"], dc.get("events", []))
+
+    mx = notif_cfg.get("matrix", {})
+    if mx.get("enabled") and mx.get("homeserver") and mx.get("room_id"):
+        result["matrix"] = Matrix(
+            mx.get("username", ""), mx.get("password", ""),
+            mx["homeserver"], mx["room_id"],
+            mx.get("events", [])
+        )
+
+    tg = notif_cfg.get("telegram", {})
+    if tg.get("enabled") and tg.get("token") and tg.get("chat_id"):
+        result["telegram"] = Telegram(
+            tg["chat_id"], tg["token"],
+            tg.get("events", []),
+            tg.get("disable_notification", False)
+        )
+
+    wh = notif_cfg.get("webhook", {})
+    if wh.get("enabled") and wh.get("endpoint"):
+        result["webhook"] = Webhook(
+            wh["endpoint"], wh.get("method", "GET"), wh.get("events", [])
+        )
+
+    po = notif_cfg.get("pushover", {})
+    if po.get("enabled") and po.get("userkey") and po.get("token"):
+        result["pushover"] = Pushover(
+            po["userkey"], po["token"],
+            po.get("priority", 0), po.get("sound", "pushover"),
+            po.get("events", [])
+        )
+
+    gt = notif_cfg.get("gotify", {})
+    if gt.get("enabled") and gt.get("endpoint"):
+        result["gotify"] = Gotify(
+            gt["endpoint"], gt.get("priority", 5), gt.get("events", [])
+        )
+
+    return result
+
+
 # ── Config hot-reload watcher ─────────────────────────────────
 
-def config_watcher(miner):
+def config_watcher(miner, startup_notif_cfg):
+    _prev_notif_cfg = startup_notif_cfg
     last_mtime = 0.0
     log = logging.getLogger(__name__)
     while True:
@@ -121,6 +177,19 @@ def config_watcher(miner):
                     streamer_map[name].settings = new_settings
                     log.debug(f"[ConfigWatcher] Hot-reloaded settings for '{name}'")
 
+            # ── notification hot-reload ──────────────────
+            new_notif_cfg = config.get("notifications", {})
+            if new_notif_cfg != _prev_notif_cfg:
+                _prev_notif_cfg = new_notif_cfg
+                new_notifs = build_notification_settings(new_notif_cfg)
+                Settings.logger.discord  = new_notifs.get("discord")
+                Settings.logger.matrix   = new_notifs.get("matrix")
+                Settings.logger.telegram = new_notifs.get("telegram")
+                Settings.logger.webhook  = new_notifs.get("webhook")
+                Settings.logger.pushover = new_notifs.get("pushover")
+                Settings.logger.gotify   = new_notifs.get("gotify")
+                log.debug("[ConfigWatcher] Notification settings reloaded")
+
         except Exception as exc:
             logging.getLogger(__name__).warning(f"[ConfigWatcher] {exc}")
 
@@ -131,6 +200,8 @@ config        = load_config()
 miner_cfg     = config.get("miner", {})
 analytics_cfg = config.get("analytics", {"host": "0.0.0.0", "port": 5000, "refresh": 5, "days_ago": 7})
 global_cfg    = config.get("global_settings")
+
+_notifs = build_notification_settings(config.get("notifications", {}))
 
 twitch_miner = TwitchChannelPointsMiner(
     username=miner_cfg.get("username", "your-twitch-username"),
@@ -148,12 +219,18 @@ twitch_miner = TwitchChannelPointsMiner(
         auto_clear=True,
         emoji=True,
         colored=True,
+        discord=_notifs.get("discord"),
+        matrix=_notifs.get("matrix"),
+        telegram=_notifs.get("telegram"),
+        webhook=_notifs.get("webhook"),
+        pushover=_notifs.get("pushover"),
+        gotify=_notifs.get("gotify"),
     ),
     streamer_settings=build_streamer_settings(global_cfg),
 )
 
 _watcher = threading.Thread(
-    target=config_watcher, args=(twitch_miner,), daemon=True, name="ConfigWatcher"
+    target=config_watcher, args=(twitch_miner, config.get("notifications", {})), daemon=True, name="ConfigWatcher"
 )
 _watcher.start()
 

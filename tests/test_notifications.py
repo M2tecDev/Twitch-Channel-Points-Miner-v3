@@ -213,3 +213,82 @@ def test_send_test_to_raises_on_http_error(monkeypatch):
         _send_test_to("discord",
                       {"webhook_api": "https://discord.com/api/webhooks/bad/url"},
                       "test")
+
+
+# ── run.py build_notification_settings tests ─────────────────
+
+# We import directly from run.py — it's a script, not a module, but the
+# function will be importable after we add it.
+import importlib, sys, types
+
+def _import_build_fn():
+    """Imports build_notification_settings from run.py without executing main code."""
+    # run.py executes on import; we need to stub out the TwitchChannelPointsMiner
+    # instantiation. The easiest path is to exec only the function definitions.
+    import ast, pathlib
+    src = pathlib.Path("run.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+
+    def _is_safe_assign(node):
+        """Keep only simple constant-value assignments (e.g. CONFIG_PATH = ...)."""
+        if not isinstance(node, ast.Assign):
+            return False
+        # Allow only if RHS contains no function calls
+        return not any(isinstance(n, ast.Call) for n in ast.walk(node.value))
+
+    # Collect only function definitions and safe imports/assignments
+    filtered_body = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                              ast.Import, ast.ImportFrom)):
+            filtered_body.append(node)
+        elif _is_safe_assign(node):
+            filtered_body.append(node)
+
+    filtered = ast.Module(body=filtered_body, type_ignores=[])
+    import pathlib as _pl
+    ns = {"__file__": str(_pl.Path("run.py").resolve())}
+    exec(compile(filtered, "run.py", "exec"), ns)
+    return ns["build_notification_settings"]
+
+
+def test_build_notification_settings_discord():
+    """build_notification_settings returns a Discord instance when enabled."""
+    build = _import_build_fn()
+    notif_cfg = {
+        "discord": {
+            "enabled": True,
+            "webhook_api": "https://discord.com/api/webhooks/1/abc",
+            "events": ["BET_WIN"],
+        }
+    }
+    result = build(notif_cfg)
+    from TwitchChannelPointsMiner.classes.Discord import Discord
+    assert isinstance(result.get("discord"), Discord)
+
+
+def test_build_notification_settings_returns_empty_for_disabled():
+    """build_notification_settings returns {} when all providers are disabled."""
+    build = _import_build_fn()
+    notif_cfg = {
+        "discord": {"enabled": False, "webhook_api": "https://x.com", "events": []}
+    }
+    result = build(notif_cfg)
+    assert result == {}
+
+
+def test_build_notification_settings_pushover_requires_priority_and_sound():
+    """build_notification_settings passes priority and sound to Pushover."""
+    build = _import_build_fn()
+    notif_cfg = {
+        "pushover": {
+            "enabled": True, "userkey": "ukey", "token": "tok",
+            "priority": 1, "sound": "cosmic", "events": ["BET_WIN"]
+        }
+    }
+    result = build(notif_cfg)
+    from TwitchChannelPointsMiner.classes.Pushover import Pushover
+    po = result.get("pushover")
+    assert isinstance(po, Pushover)
+    assert po.priority == 1
+    assert po.sound == "cosmic"
