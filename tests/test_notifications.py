@@ -219,8 +219,6 @@ def test_send_test_to_raises_on_http_error(monkeypatch):
 
 # We import directly from run.py — it's a script, not a module, but the
 # function will be importable after we add it.
-import importlib, sys, types
-
 def _import_build_fn():
     """Imports build_notification_settings from run.py without executing main code."""
     # run.py executes on import; we need to stub out the TwitchChannelPointsMiner
