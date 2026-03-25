@@ -1,10 +1,8 @@
 # =============================================================================
 # Twitch-Channel-Points-Miner-v3  –  Dockerfile
-# Strategy: Multi-Stage Build
-#   Stage 1 (builder)  – compile/install all Python dependencies
-#   Stage 2 (final)    – lean runtime image, only what's needed to run
+# Strategy: Multi-Stage Build  (builder → slim runtime)
 #
-# Persistent user-data (mount as volumes, never baked into the image):
+# Persistent user-data – mount as volumes, never baked into the image:
 #   /app/config.json   – bot configuration
 #   /app/cookies/      – Twitch auth cookies  (<username>.pkl)
 #   /app/logs/         – rotating log files
@@ -18,7 +16,7 @@ ARG BUILDX_QEMU_ENV
 
 WORKDIR /build
 
-# Build-time dependencies  (not needed at runtime)
+# Build-time dependencies (compiler + headers for native extensions)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc \
         g++ \
@@ -30,13 +28,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# Install packages into a separate prefix so we can COPY them cleanly.
-# CRYPTOGRAPHY_DONT_BUILD_RUST avoids the heavy Rust toolchain on most arches.
-RUN CRYPTOGRAPHY_DONT_BUILD_RUST=1 \
-    pip install --no-cache-dir --prefix=/install \
-        $([ "${BUILDX_QEMU_ENV}" = "true" ] && [ "$(getconf LONG_BIT)" = "32" ] \
-            && echo "cryptography==3.3.2" || true) \
-    && pip install --no-cache-dir --prefix=/install -r requirements.txt
+# Use a virtualenv – the industry-standard pattern for multi-stage builds.
+# Avoids all --prefix edge-cases (pip install with no args exits 1, etc.).
+#
+# CRYPTOGRAPHY_DONT_BUILD_RUST=1  →  skip Rust toolchain on all arches.
+# On 32-bit ARM (QEMU cross-build) pin cryptography to the last pure-Python
+# version (3.3.2) before the mandatory Rust build was introduced.
+RUN python -m venv /venv \
+    && /venv/bin/pip install --no-cache-dir --upgrade pip \
+    && if [ "${BUILDX_QEMU_ENV}" = "true" ] && [ "$(getconf LONG_BIT)" = "32" ]; then \
+           /venv/bin/pip install --no-cache-dir "cryptography==3.3.2"; \
+       fi \
+    && CRYPTOGRAPHY_DONT_BUILD_RUST=1 \
+       /venv/bin/pip install --no-cache-dir -r requirements.txt
 
 
 # ── Stage 2 : Final runtime image ─────────────────────────────────────────────
@@ -47,13 +51,16 @@ LABEL org.opencontainers.image.title="Twitch-Channel-Points-Miner-v3" \
       org.opencontainers.image.url="https://github.com/M2tecDev/Twitch-Channel-Points-Miner-v3" \
       org.opencontainers.image.licenses="MIT"
 
-# Runtime-only shared libraries (no -dev packages, no compiler)
+# Runtime shared libraries only (no compiler, no -dev packages)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libjpeg62-turbo \
     && rm -rf /var/lib/apt/lists/*
 
-# Pull compiled Python packages from the builder stage
-COPY --from=builder /install /usr/local
+# Copy the entire virtualenv from the builder stage
+COPY --from=builder /venv /venv
+
+# Make the venv the active Python environment
+ENV PATH="/venv/bin:$PATH"
 
 WORKDIR /app
 
@@ -73,8 +80,7 @@ USER miner
 EXPOSE 5000
 
 # ── Health check ──────────────────────────────────────────────────────────────
-# Pings the analytics endpoint. Remove/comment if enable_analytics=false.
-# NOTE: No heredocs here – Dockerfile only supports single-line CMD strings.
+# Remove/comment if enable_analytics=false in config.json.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/', timeout=8)"
 
