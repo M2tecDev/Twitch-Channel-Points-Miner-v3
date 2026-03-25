@@ -10,9 +10,18 @@ import os
 import re
 from pathlib import Path
 
+import requests
+
 from flask import Response, request
 
 from TwitchChannelPointsMiner.classes.Settings import Settings
+from TwitchChannelPointsMiner.classes.Settings import Events
+from TwitchChannelPointsMiner.classes.Discord import Discord
+from TwitchChannelPointsMiner.classes.Matrix import Matrix
+from TwitchChannelPointsMiner.classes.Telegram import Telegram
+from TwitchChannelPointsMiner.classes.Webhook import Webhook
+from TwitchChannelPointsMiner.classes.Pushover import Pushover
+from TwitchChannelPointsMiner.classes.Gotify import Gotify
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +59,36 @@ DEFAULT_CONFIG = {
     },
     "settings_password": "",
     "streamers": [],
+    "notifications": {
+        "discord":  {
+            "enabled": False, "webhook_api": "",
+            "events": ["BET_WIN", "BET_LOSE", "STREAMER_ONLINE", "STREAMER_OFFLINE"]
+        },
+        "matrix":   {
+            "enabled": False, "username": "", "password": "",
+            "homeserver": "", "room_id": "",
+            "events": ["BET_WIN", "BET_LOSE", "STREAMER_ONLINE", "STREAMER_OFFLINE"]
+        },
+        "telegram": {
+            "enabled": False, "chat_id": "", "token": "",
+            "disable_notification": False,
+            "events": ["BET_WIN", "BET_LOSE", "STREAMER_ONLINE", "STREAMER_OFFLINE"]
+        },
+        "webhook":  {
+            "enabled": False, "endpoint": "", "method": "GET",
+            "events": ["BET_WIN", "BET_LOSE"]
+        },
+        "pushover": {
+            "enabled": False, "userkey": "", "token": "",
+            "priority": 0, "sound": "pushover",
+            "events": ["BET_WIN", "BET_LOSE"]
+        },
+        "gotify":   {
+            "enabled": False, "endpoint": "",
+            "priority": 5,
+            "events": ["BET_WIN", "BET_LOSE"]
+        },
+    },
 }
 
 
@@ -88,6 +127,137 @@ def _auth_error() -> Response:
         status=401,
         mimetype="application/json",
     )
+
+
+def _build_notif_objects(notif_cfg: dict) -> dict:
+    """Builds provider_name → instance for each enabled, configured provider.
+    Duplicates build_notification_settings() from run.py to avoid circular import."""
+    result = {}
+    if not notif_cfg:
+        return result
+
+    dc = notif_cfg.get("discord", {})
+    if dc.get("enabled") and dc.get("webhook_api"):
+        result["discord"] = Discord(dc["webhook_api"], dc.get("events", []))
+
+    mx = notif_cfg.get("matrix", {})
+    if mx.get("enabled") and mx.get("homeserver") and mx.get("room_id"):
+        result["matrix"] = Matrix(
+            mx.get("username", ""), mx.get("password", ""),
+            mx["homeserver"], mx["room_id"],
+            mx.get("events", [])
+        )
+
+    tg = notif_cfg.get("telegram", {})
+    if tg.get("enabled") and tg.get("token") and tg.get("chat_id"):
+        result["telegram"] = Telegram(
+            tg["chat_id"], tg["token"],
+            tg.get("events", []),
+            tg.get("disable_notification", False)
+        )
+
+    wh = notif_cfg.get("webhook", {})
+    if wh.get("enabled") and wh.get("endpoint"):
+        result["webhook"] = Webhook(
+            wh["endpoint"], wh.get("method", "GET"), wh.get("events", [])
+        )
+
+    po = notif_cfg.get("pushover", {})
+    if po.get("enabled") and po.get("userkey") and po.get("token"):
+        result["pushover"] = Pushover(
+            po["userkey"], po["token"],
+            po.get("priority", 0), po.get("sound", "pushover"),
+            po.get("events", [])
+        )
+
+    gt = notif_cfg.get("gotify", {})
+    if gt.get("enabled") and gt.get("endpoint"):
+        result["gotify"] = Gotify(
+            gt["endpoint"], gt.get("priority", 5), gt.get("events", [])
+        )
+
+    return result
+
+
+def _send_test_to(service: str, cfg: dict, msg: str) -> None:
+    """Fires each provider's HTTP request directly, bypassing send()'s event-list filter.
+    Raises on HTTP error or invalid credentials."""
+    if service == "discord":
+        r = requests.post(
+            url=cfg["webhook_api"],
+            json={
+                "content": msg,
+                "username": "Twitch Channel Points Miner",
+                "avatar_url": "https://i.imgur.com/X9fEkhT.png",
+            },
+        )
+        r.raise_for_status()
+
+    elif service == "matrix":
+        from urllib.parse import quote as url_quote
+        hs = cfg["homeserver"].strip().rstrip("/")
+        if "://" in hs:
+            hs = hs.split("://", 1)[1]
+        login_resp = requests.post(
+            url=f"https://{hs}/_matrix/client/r0/login",
+            json={"user": cfg["username"], "password": cfg["password"],
+                  "type": "m.login.password"},
+            timeout=10,
+        )
+        token = login_resp.json().get("access_token")
+        if not token:
+            raise ValueError(f"Matrix login failed: {login_resp.json()}")
+        room = url_quote(cfg["room_id"])
+        r = requests.post(
+            url=f"https://{hs}/_matrix/client/r0/rooms/{room}/send/m.room.message?access_token={token}",
+            json={"body": msg, "msgtype": "m.text"},
+        )
+        r.raise_for_status()
+
+    elif service == "telegram":
+        r = requests.post(
+            url=f"https://api.telegram.org/bot{cfg['token']}/sendMessage",
+            data={
+                "chat_id": cfg["chat_id"],
+                "text": msg,
+                "disable_web_page_preview": True,
+                "disable_notification": cfg.get("disable_notification", False),
+            },
+        )
+        r.raise_for_status()
+
+    elif service == "webhook":
+        from urllib.parse import urlencode
+        url = cfg["endpoint"] + "?" + urlencode({"event_name": "TEST", "message": msg})
+        if cfg.get("method", "GET").upper() == "POST":
+            r = requests.post(url=url)
+        else:
+            r = requests.get(url=url)
+        r.raise_for_status()
+
+    elif service == "pushover":
+        r = requests.post(
+            url="https://api.pushover.net/1/messages.json",
+            data={
+                "user": cfg["userkey"],
+                "token": cfg["token"],
+                "message": msg,
+                "title": "Twitch Channel Points Miner",
+                "priority": cfg.get("priority", 0),
+                "sound": cfg.get("sound", "pushover"),
+            },
+        )
+        r.raise_for_status()
+
+    elif service == "gotify":
+        r = requests.post(
+            url=cfg["endpoint"],
+            data={"message": msg, "priority": cfg.get("priority", 5)},
+        )
+        r.raise_for_status()
+
+    else:
+        raise ValueError(f"Unknown notification service: {service}")
 
 
 # ── Validation helpers ────────────────────────────────────────
@@ -319,3 +489,29 @@ def delete_streamer(username: str):
         return Response(json.dumps({"error": f"Failed to write config: {e}"}), status=500, mimetype="application/json")
     return Response(json.dumps({"status": "ok", "message": f"'{username}' removed. Miner restarts in ~10s."}),
                     status=200, mimetype="application/json")
+
+
+def test_notifications():
+    """POST /config/notifications/test
+    Sends a test message to every enabled provider.
+    Always returns HTTP 200 with a per-provider result dict:
+      { "discord": "ok", "matrix": "error: 403 Forbidden", ... }
+    """
+    if not _check_auth():
+        return _auth_error()
+
+    cfg = _load_or_default()
+    notif_cfg = cfg.get("notifications", {})
+    TEST_MESSAGE = "\U0001f514 Test Notification from Twitch Channel Points Miner"
+
+    results = {}
+    for service, provider_cfg in notif_cfg.items():
+        if not isinstance(provider_cfg, dict) or not provider_cfg.get("enabled"):
+            continue
+        try:
+            _send_test_to(service, provider_cfg, TEST_MESSAGE)
+            results[service] = "ok"
+        except Exception as e:
+            results[service] = f"error: {e}"
+
+    return Response(json.dumps(results), status=200, mimetype="application/json")

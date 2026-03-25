@@ -116,3 +116,100 @@ def test_matrix_send_logs_warning_on_bad_status(caplog):
         with caplog.at_level(logging.WARNING):
             m.send("hello", Events.BET_WIN)
     assert any("403" in r.message for r in caplog.records)
+
+
+# ── config_routes tests ──────────────────────────────────────
+
+from TwitchChannelPointsMiner.classes.routes.config_routes import (
+    DEFAULT_CONFIG,
+    _build_notif_objects,
+    _send_test_to,
+)
+
+
+def test_default_config_has_notifications_key():
+    """DEFAULT_CONFIG must include the notifications key with all 6 providers."""
+    assert "notifications" in DEFAULT_CONFIG
+    for provider in ("discord", "matrix", "telegram", "webhook", "pushover", "gotify"):
+        assert provider in DEFAULT_CONFIG["notifications"], \
+            f"Missing provider '{provider}' in DEFAULT_CONFIG['notifications']"
+
+
+def test_default_config_notifications_are_disabled():
+    """All providers start disabled so new installs don't send noise."""
+    for provider, cfg in DEFAULT_CONFIG["notifications"].items():
+        assert cfg.get("enabled") is False, \
+            f"Provider '{provider}' should default to enabled=False"
+
+
+def test_build_notif_objects_returns_discord_when_enabled():
+    """_build_notif_objects builds a Discord instance when enabled + webhook_api set."""
+    notif_cfg = {
+        "discord": {
+            "enabled": True,
+            "webhook_api": "https://discord.com/api/webhooks/123/abc",
+            "events": ["BET_WIN"],
+        }
+    }
+    objects = _build_notif_objects(notif_cfg)
+    from TwitchChannelPointsMiner.classes.Discord import Discord
+    assert "discord" in objects
+    assert isinstance(objects["discord"], Discord)
+
+
+def test_build_notif_objects_skips_disabled_provider():
+    """_build_notif_objects does not build an object for disabled providers."""
+    notif_cfg = {
+        "discord": {
+            "enabled": False,
+            "webhook_api": "https://discord.com/api/webhooks/123/abc",
+            "events": ["BET_WIN"],
+        }
+    }
+    objects = _build_notif_objects(notif_cfg)
+    assert "discord" not in objects
+
+
+def test_build_notif_objects_skips_provider_missing_required_field():
+    """_build_notif_objects does not build Discord if webhook_api is empty."""
+    notif_cfg = {
+        "discord": {"enabled": True, "webhook_api": "", "events": ["BET_WIN"]}
+    }
+    objects = _build_notif_objects(notif_cfg)
+    assert "discord" not in objects
+
+
+def test_send_test_to_discord_uses_json(monkeypatch):
+    """_send_test_to('discord', ...) must POST with json= payload."""
+    calls = []
+
+    class FakeResp:
+        status_code = 204
+        def raise_for_status(self): pass
+
+    def fake_post(url, json=None, data=None, **kw):
+        calls.append({"url": url, "json": json, "data": data})
+        return FakeResp()
+
+    monkeypatch.setattr("requests.post", fake_post)
+    cfg = {"webhook_api": "https://discord.com/api/webhooks/123/abc"}
+    _send_test_to("discord", cfg, "test msg")
+    assert calls, "Expected requests.post to be called"
+    assert calls[0]["json"] is not None, "Discord test must use json="
+    assert calls[0]["data"] is None, "Discord test must not use data="
+
+
+def test_send_test_to_raises_on_http_error(monkeypatch):
+    """_send_test_to raises an exception when the HTTP request fails."""
+    import requests as req
+
+    class FakeResp:
+        status_code = 404
+        def raise_for_status(self):
+            raise req.HTTPError("404 Not Found")
+
+    monkeypatch.setattr("requests.post", lambda *a, **kw: FakeResp())
+    with pytest.raises(req.HTTPError):
+        _send_test_to("discord",
+                      {"webhook_api": "https://discord.com/api/webhooks/bad/url"},
+                      "test")
