@@ -9,13 +9,14 @@ import logging
 import os
 import re
 from pathlib import Path
+from urllib.parse import quote as url_quote
+from urllib.parse import urlencode
 
 import requests
 
 from flask import Response, request
 
 from TwitchChannelPointsMiner.classes.Settings import Settings
-from TwitchChannelPointsMiner.classes.Settings import Events
 from TwitchChannelPointsMiner.classes.Discord import Discord
 from TwitchChannelPointsMiner.classes.Matrix import Matrix
 from TwitchChannelPointsMiner.classes.Telegram import Telegram
@@ -194,7 +195,6 @@ def _send_test_to(service: str, cfg: dict, msg: str) -> None:
         r.raise_for_status()
 
     elif service == "matrix":
-        from urllib.parse import quote as url_quote
         hs = cfg["homeserver"].strip().rstrip("/")
         if "://" in hs:
             hs = hs.split("://", 1)[1]
@@ -227,7 +227,6 @@ def _send_test_to(service: str, cfg: dict, msg: str) -> None:
         r.raise_for_status()
 
     elif service == "webhook":
-        from urllib.parse import urlencode
         url = cfg["endpoint"] + "?" + urlencode({"event_name": "TEST", "message": msg})
         if cfg.get("method", "GET").upper() == "POST":
             r = requests.post(url=url)
@@ -270,7 +269,6 @@ def _is_valid_twitch_username(username: str) -> bool:
 def _streamer_exists_on_twitch(username: str) -> bool:
     """Prüft über die Twitch Helix API ob der User existiert."""
     try:
-        import requests
         from TwitchChannelPointsMiner.constants import CLIENT_ID
 
         r = requests.get(
