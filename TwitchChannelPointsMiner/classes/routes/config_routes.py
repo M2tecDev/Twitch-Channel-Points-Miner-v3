@@ -491,25 +491,37 @@ def delete_streamer(username: str):
 
 def test_notifications():
     """POST /config/notifications/test
-    Sends a test message to every enabled provider.
+    Sends a test message to a single provider specified in the JSON body:
+      { "service": "discord" }
     Always returns HTTP 200 with a per-provider result dict:
-      { "discord": "ok", "matrix": "error: 403 Forbidden", ... }
+      { "discord": "ok" }  or  { "discord": "error: 403 Forbidden" }
     """
     if not _check_auth():
         return _auth_error()
+
+    body = request.get_json(silent=True) or {}
+    service = body.get("service", "")
+    if not service:
+        return Response(
+            json.dumps({"error": "Missing 'service' in request body"}),
+            status=400, mimetype="application/json"
+        )
 
     cfg = _load_or_default()
     notif_cfg = cfg.get("notifications", {})
     TEST_MESSAGE = "\U0001f514 Test Notification from Twitch Channel Points Miner"
 
-    results = {}
-    for service, provider_cfg in notif_cfg.items():
-        if not isinstance(provider_cfg, dict) or not provider_cfg.get("enabled"):
-            continue
-        try:
-            _send_test_to(service, provider_cfg, TEST_MESSAGE)
-            results[service] = "ok"
-        except Exception as e:
-            results[service] = f"error: {e}"
+    provider_cfg = notif_cfg.get(service)
+    if not isinstance(provider_cfg, dict) or not provider_cfg.get("enabled"):
+        return Response(
+            json.dumps({service: "error: provider not found or not enabled"}),
+            status=200, mimetype="application/json"
+        )
 
-    return Response(json.dumps(results), status=200, mimetype="application/json")
+    try:
+        _send_test_to(service, provider_cfg, TEST_MESSAGE)
+        result = "ok"
+    except Exception as e:
+        result = f"error: {e}"
+
+    return Response(json.dumps({service: result}), status=200, mimetype="application/json")

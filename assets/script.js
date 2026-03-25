@@ -2457,7 +2457,11 @@ function renderNotificationsTab(config) {
             try {
                 var r = await fetch('./config/notifications/test', {
                     method: 'POST',
-                    headers: { 'X-Settings-Password': _getSettingsPw() }
+                    headers: {
+                        'X-Settings-Password': _getSettingsPw(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ service: svc.id })
                 });
                 var data = await r.json();
                 var svcResult = data[svc.id];
