@@ -12,8 +12,6 @@
 # ── Stage 1 : Builder ─────────────────────────────────────────────────────────
 FROM python:3.12-slim AS builder
 
-ARG BUILDX_QEMU_ENV
-
 WORKDIR /build
 
 # Build-time dependencies (compiler + headers for native extensions)
@@ -28,17 +26,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# Use a virtualenv – the industry-standard pattern for multi-stage builds.
-# Avoids all --prefix edge-cases (pip install with no args exits 1, etc.).
-#
-# CRYPTOGRAPHY_DONT_BUILD_RUST=1  →  skip Rust toolchain on all arches.
-# On 32-bit ARM (QEMU cross-build) pin cryptography to the last pure-Python
-# version (3.3.2) before the mandatory Rust build was introduced.
+# Virtualenv-Pattern: Standard für Multi-Stage-Python-Builds.
+# Alle Pakete landen in /venv, werden 1:1 in die Final-Stage kopiert.
+# CRYPTOGRAPHY_DONT_BUILD_RUST=1 vermeidet den Rust-Toolchain auf allen Arches.
 RUN python -m venv /venv \
     && /venv/bin/pip install --no-cache-dir --upgrade pip \
-    && if [ "${BUILDX_QEMU_ENV}" = "true" ] && [ "$(getconf LONG_BIT)" = "32" ]; then \
-           /venv/bin/pip install --no-cache-dir "cryptography==3.3.2"; \
-       fi \
     && CRYPTOGRAPHY_DONT_BUILD_RUST=1 \
        /venv/bin/pip install --no-cache-dir -r requirements.txt
 
@@ -56,10 +48,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libjpeg62-turbo \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the entire virtualenv from the builder stage
+# Virtualenv aus dem Builder übernehmen und aktivieren
 COPY --from=builder /venv /venv
-
-# Make the venv the active Python environment
 ENV PATH="/venv/bin:$PATH"
 
 WORKDIR /app
@@ -80,13 +70,13 @@ USER miner
 EXPOSE 5000
 
 # ── Health check ──────────────────────────────────────────────────────────────
-# Remove/comment if enable_analytics=false in config.json.
+# Entfernen/auskommentieren wenn enable_analytics=false in config.json.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/', timeout=8)"
 
 # ── Entry point ───────────────────────────────────────────────────────────────
-# wrapper.py supervises run.py:
-#   • auto-restart on crash
-#   • graceful restart when the streamer list in config.json changes
-#   • catches both SIGINT and SIGTERM for clean Docker shutdown
+# wrapper.py überwacht run.py:
+#   • Auto-Restart bei Absturz
+#   • Graceful Restart bei Streamer-Listen-Änderung in config.json
+#   • Fängt SIGINT und SIGTERM für sauberes Docker-Shutdown
 ENTRYPOINT ["python", "wrapper.py"]

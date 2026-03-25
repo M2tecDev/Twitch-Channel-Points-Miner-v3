@@ -8,7 +8,6 @@ on:
 
 env:
   # Opt into Node.js 24 now – avoids deprecation warnings for all actions.
-  # Remove once action authors ship native Node.js 24 versions.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -50,9 +49,11 @@ jobs:
             type=raw,value=latest
 
       # ── Multi-platform Build & Push ───────────────────────────────────────
-      # BUILDX_QEMU_ENV=true: damit das Dockerfile 32-bit ARM-Umgebungen
-      # erkennt und ein kompatibles cryptography-Wheel installiert.
-      - name: Build and push (amd64 · arm64 · armv7)
+      # Platforms: amd64 + arm64 only.
+      # linux/arm/v7 (32-bit) wurde entfernt: pandas hat seit v2.0 keine
+      # pre-built Wheels mehr für 32-bit ARM. QEMU-Crosscompile bricht daher
+      # beim Source-Build ab. Moderne Raspberry Pis nutzen 64-bit OS (arm64).
+      - name: Build and push (amd64 · arm64)
         id: docker_build
         uses: docker/build-push-action@v6
         with:
@@ -61,8 +62,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
-          build-args: BUILDX_QEMU_ENV=true
+          platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
