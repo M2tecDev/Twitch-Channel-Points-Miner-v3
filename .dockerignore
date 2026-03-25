@@ -1,0 +1,58 @@
+﻿# =============================================================================
+# .dockerignore  –  Twitch-Channel-Points-Miner-v3
+# Keeps the build context lean.  Everything listed here is excluded from
+# the image  (code is copied explicitly in the Dockerfile).
+# =============================================================================
+
+# ── Version control ───────────────────────────────────────────────────────────
+.git/
+.gitignore
+.github/
+
+# ── Python byte-code & caches ─────────────────────────────────────────────────
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+.pytest_cache/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.env
+
+# ── Node.js (only used for local Playwright tests, not needed in Docker) ──────
+node_modules/
+package.json
+package-lock.json
+
+# ── Test suite (not needed in production image) ───────────────────────────────
+tests/
+
+# ── Development tooling ───────────────────────────────────────────────────────
+.vscode/
+.pre-commit-config.yaml
+DELETE_PYCACHE.bat
+pickle_view.py
+
+# ── Documentation & repo meta ─────────────────────────────────────────────────
+docs/
+*.md
+TRAFFIC.md
+CLONE.md
+V3_UPDATE_LOG.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+LICENSE
+
+# ── Runtime / user data (should be bind-mounted as volumes, never baked in) ───
+config.json
+cookies/
+logs/
+analytics/
+data/
+
+# ── CI / build artifacts ──────────────────────────────────────────────────────
+*.egg-info/
+dist/
+build/

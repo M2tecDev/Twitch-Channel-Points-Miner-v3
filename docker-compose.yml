@@ -1,0 +1,81 @@
+﻿# =============================================================================
+# docker-compose.yml  –  Twitch-Channel-Points-Miner-v3
+#
+# Quick-start:
+#   1. Copy config.json.example → config.json  and fill in your credentials
+#   2. docker compose up -d
+#
+# Persistent data lands in ./data/ next to this file:
+#   data/cookies/    ← Twitch auth cookies  (auto-created on first login)
+#   data/logs/       ← rotating log files
+#   data/analytics/  ← analytics SQLite databases
+# =============================================================================
+
+services:
+  miner:
+    # ── Image ────────────────────────────────────────────────────────────────
+    # Option A – pull the pre-built image from GitHub Container Registry
+    image: ghcr.io/m2tecdev/twitch-channel-points-miner-v3:latest
+
+    # Option B – build locally (comment out 'image' above, uncomment below)
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+
+    container_name: tcpm-miner
+    restart: unless-stopped
+
+    # ── Signal handling ───────────────────────────────────────────────────────
+    # wrapper.py catches SIGINT (KeyboardInterrupt) for graceful shutdown.
+    # Docker's default stop signal is SIGTERM; override so 'docker stop' works.
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+
+    # ── Environment ───────────────────────────────────────────────────────────
+    environment:
+      # Optional: set your local timezone so log timestamps are human-readable.
+      # Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+      TZ: Europe/Berlin
+
+    # ── Volumes ───────────────────────────────────────────────────────────────
+    # Code is baked into the image.  Only user-data is mounted.
+    volumes:
+      # Required: your bot configuration (read-only inside the container)
+      - ./config.json:/app/config.json:ro
+
+      # Persistent runtime data  (read-write)
+      - ./data/cookies:/app/cookies
+      - ./data/logs:/app/logs
+      - ./data/analytics:/app/analytics
+
+    # ── Ports ─────────────────────────────────────────────────────────────────
+    ports:
+      # Analytics Web UI – accessible at http://localhost:5000
+      # Change host port if 5000 is already in use, e.g. "8080:5000"
+      - "5000:5000"
+
+    # ── Health check ──────────────────────────────────────────────────────────
+    # Remove / comment out this block if enable_analytics is false in config.json
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - |
+          import urllib.request, sys
+          try:
+              urllib.request.urlopen('http://localhost:5000/', timeout=8)
+              sys.exit(0)
+          except Exception:
+              sys.exit(1)
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
+
+    # ── Logging ───────────────────────────────────────────────────────────────
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
