@@ -1,46 +1,67 @@
-name: deploy-docker
+name: Deploy Docker
 
 on:
   push:
-    # branches: [master]
     tags:
       - '*'
   workflow_dispatch:
 
 jobs:
   deploy-docker:
-    name: Deploy Docker Hub
+    name: Build & Push (DockerHub + GHCR)
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write   # required to push to ghcr.io
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3.2.0
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.7.1
+        uses: docker/setup-buildx-action@v3
 
+      # ── DockerHub login ───────────────────────────────────────────────────
       - name: Login to DockerHub
-        uses: docker/login-action@v3.3.0
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
+      # ── GitHub Container Registry login ──────────────────────────────────
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Build metadata (tags + labels) ───────────────────────────────────
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: rdavidoff/twitch-channel-points-miner-v2
+          images: |
+            m2tecdev/twitch-channel-points-miner-v3
+            ghcr.io/m2tecdev/twitch-channel-points-miner-v3
           tags: |
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags') }}
             type=raw,value=latest
 
-      - name: Build and push AMD64, ARM64, ARMv7
+      # ── Multi-platform build & push ───────────────────────────────────────
+      # BUILDX_QEMU_ENV=true is passed so the Dockerfile can detect 32-bit
+      # ARM environments and install a compatible cryptography wheel.
+      - name: Build and push (amd64 · arm64 · armv7)
         id: docker_build
-        uses: docker/build-push-action@v6.9.0
+        uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -49,13 +70,5 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # File size exceeds the maximum allowed 25000 bytes
-      # - name: Docker Hub Description
-      #   uses: peter-evans/dockerhub-description@v2
-      #   with:
-      #     username: ${{ secrets.DOCKER_USERNAME }}
-      #     password: ${{ secrets.DOCKER_TOKEN }}
-      #     repository: rdavidoff/twitch-channel-points-miner-v2
-
-      - name: Image digest AMD64, ARM64, ARMv7
-        run: echo ${{ steps.docker_build.outputs.digest }}
+      - name: Image digest
+        run: echo "${{ steps.docker_build.outputs.digest }}"

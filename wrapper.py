@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-wrapper.py  —  Supervised restart manager for run.py
+wrapper.py  –  Supervised restart manager for run.py
 =====================================================
 Start the bot with:   python wrapper.py
 
@@ -12,11 +12,12 @@ What it does:
      it gracefully terminates run.py and restarts it (10-second delay so the
      Web UI can display a "restarting…" state).
   4. Settings changes (bet strategy, make_predictions, etc.) do NOT trigger a
-     restart — run.py's config watcher thread handles those in-memory.
+     restart – run.py's config watcher thread handles those in-memory.
 """
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -33,7 +34,6 @@ def is_config_valid(config_path: str) -> bool:
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
-        # Muss ein Dict sein und einen "miner"-Block mit "username" haben
         if not isinstance(config, dict):
             return False
         if "miner" not in config or not config["miner"].get("username"):
@@ -41,6 +41,7 @@ def is_config_valid(config_path: str) -> bool:
         return True
     except Exception:
         return False
+
 
 def get_streamers_fingerprint(config_path: str):
     """
@@ -64,9 +65,19 @@ def start_miner() -> subprocess.Popen:
     return subprocess.Popen([sys.executable, RUNNER_PATH])
 
 
-# ── Boot ─────────────────────────────────────────────────────
+# ── Signal handling ────────────────────────────────────────────────────────────
+# Docker sends SIGTERM on `docker stop`. Python's KeyboardInterrupt is only
+# raised for SIGINT (Ctrl+C).  Map SIGTERM → KeyboardInterrupt so the same
+# graceful-shutdown code path is used in both cases.
+def _sigterm_handler(*_):
+    raise KeyboardInterrupt()
+
+signal.signal(signal.SIGTERM, _sigterm_handler)
+
+
+# ── Boot ───────────────────────────────────────────────────────────────────────
 print("╔══════════════════════════════════════╗", flush=True)
-print("║  CPM 3   —  wrapper.py  started      ║", flush=True)
+print("║  CPM 3   –  wrapper.py  started      ║", flush=True)
 print("╚══════════════════════════════════════╝", flush=True)
 
 if not os.path.exists(CONFIG_PATH):
@@ -82,17 +93,17 @@ try:
     while True:
         time.sleep(3)
 
-        # ── 1. Restart on crash ───────────────────────────────
+        # ── 1. Restart on crash ─────────────────────────────────────────────
         if process.poll() is not None:
             code = process.returncode
-            print(f"⚠  Miner exited (code {code}) — restarting in {CRASH_DELAY}s…", flush=True)
+            print(f"⚠  Miner exited (code {code}) – restarting in {CRASH_DELAY}s…", flush=True)
             time.sleep(CRASH_DELAY)
             process          = start_miner()
             last_fingerprint = get_streamers_fingerprint(CONFIG_PATH)
             last_mtime       = 0.0
             continue
 
-        # ── 2. Detect streamer-list changes ──────────────────
+        # ── 2. Detect streamer-list changes ────────────────────────────────
         try:
             mtime = os.path.getmtime(CONFIG_PATH)
         except OSError:
@@ -109,10 +120,10 @@ try:
             continue
 
         if not is_config_valid(CONFIG_PATH):
-            print("⚠  config.json hat ungültiges Format — Restart abgebrochen.", flush=True)
+            print("⚠  config.json hat ungültiges Format – Restart abgebrochen.", flush=True)
             continue
 
-        print(f"🔄  Streamer list changed — restarting miner in {RESTART_DELAY}s…", flush=True)
+        print(f"🔄  Streamer list changed – restarting miner in {RESTART_DELAY}s…", flush=True)
         time.sleep(RESTART_DELAY)
 
         process.terminate()
@@ -127,7 +138,7 @@ try:
         last_fingerprint = current_fp
 
 except KeyboardInterrupt:
-    print("\n⛔  Wrapper stopped — shutting down miner…", flush=True)
+    print("\n⛔  Wrapper stopped – shutting down miner…", flush=True)
     process.terminate()
     try:
         process.wait(timeout=10)
