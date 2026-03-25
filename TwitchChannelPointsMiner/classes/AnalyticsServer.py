@@ -19,6 +19,7 @@ from TwitchChannelPointsMiner.classes.routes.config_routes import (
     add_streamer,
     patch_streamer,
     delete_streamer,
+    test_notifications,
 )
 from TwitchChannelPointsMiner.classes.routes.analytics_routes import (
     index,
@@ -118,6 +119,7 @@ class AnalyticsServer(Thread):
         self.app.add_url_rule("/config/streamer",                   "add_streamer",   add_streamer,    methods=["POST"])
         self.app.add_url_rule("/config/streamer/<string:username>", "patch_streamer", patch_streamer,  methods=["PATCH"])
         self.app.add_url_rule("/config/streamer/<string:username>", "del_streamer",   delete_streamer, methods=["DELETE"])
+        self.app.add_url_rule("/config/notifications/test",         "test_notifications", test_notifications, methods=["POST"])
 
     def run(self):
         logger.info(f"Analytics running on http://{self.host}:{self.port}/",

@@ -2404,6 +2404,9 @@ function renderNotificationsTab(config) {
                 '<button class="btn btn-primary notif-save" data-service="'+svc.id+'">'+
                   '<i class="fas fa-floppy-disk"></i> Save '+svc.title+
                 '</button>'+
+                '<button class="btn btn-secondary notif-test" data-service="'+svc.id+'">'+
+                  '<i class="fas fa-paper-plane"></i> Send Test'+
+                '</button>'+
               '</div>'+
             '</div>';
 
@@ -2431,6 +2434,44 @@ function renderNotificationsTab(config) {
                 showSettingsToast(svc.title + ': ' + (res.message||'✓ Saved'));
             } catch(err) {
                 showSettingsToast('Save failed: '+err.message, true);
+            }
+        };
+
+        // Test button — saves first (await), then fires test POST
+        card.querySelector('.notif-test').onclick = async function() {
+            try {
+                if(!_settingsCfg) _settingsCfg = {};
+                _settingsCfg.notifications = _settingsCfg.notifications || {};
+                var enableChk = card.querySelector('.notif-enable');
+                var evtChecks = Array.from(card.querySelectorAll('.notif-event:checked'))
+                                    .map(function(c){ return c.value; });
+                var values = svc.gatherValues();
+                values.enabled = enableChk ? enableChk.checked : false;
+                values.events  = evtChecks;
+                _settingsCfg.notifications[svc.id] = values;
+                await saveConfig(_settingsCfg);
+            } catch(saveErr) {
+                showSettingsToast('Save failed before test: ' + saveErr.message, true);
+                return;
+            }
+            try {
+                var r = await fetch('./config/notifications/test', {
+                    method: 'POST',
+                    headers: {
+                        'X-Settings-Password': _getSettingsPw(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ service: svc.id })
+                });
+                var data = await r.json();
+                var svcResult = data[svc.id];
+                if (svcResult === 'ok') {
+                    showSettingsToast(svc.title + ': Test sent \u2713');
+                } else {
+                    showSettingsToast(svc.title + ': ' + (svcResult || 'no response'), true);
+                }
+            } catch(err) {
+                showSettingsToast('Test failed: ' + err.message, true);
             }
         };
 
