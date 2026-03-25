@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # Twitch-Channel-Points-Miner-v3  –  Dockerfile
 # Strategy: Multi-Stage Build
 #   Stage 1 (builder)  – compile/install all Python dependencies
@@ -30,11 +30,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# Install packages into a separate prefix so we can COPY them cleanly
+# Install packages into a separate prefix so we can COPY them cleanly.
 # CRYPTOGRAPHY_DONT_BUILD_RUST avoids the heavy Rust toolchain on most arches.
 RUN CRYPTOGRAPHY_DONT_BUILD_RUST=1 \
     pip install --no-cache-dir --prefix=/install \
-        # 32-bit QEMU environments need an older cryptography build
         $([ "${BUILDX_QEMU_ENV}" = "true" ] && [ "$(getconf LONG_BIT)" = "32" ] \
             && echo "cryptography==3.3.2" || true) \
     && pip install --no-cache-dir --prefix=/install -r requirements.txt
@@ -71,24 +70,17 @@ RUN useradd -r -u 1000 -m -s /usr/sbin/nologin miner \
 USER miner
 
 # ── Networking ────────────────────────────────────────────────────────────────
-# Analytics web UI  (Flask)
 EXPOSE 5000
 
 # ── Health check ──────────────────────────────────────────────────────────────
-# Pings the analytics endpoint.  Disable this if enable_analytics=false.
+# Pings the analytics endpoint. Remove/comment if enable_analytics=false.
+# NOTE: No heredocs here – Dockerfile only supports single-line CMD strings.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
-    CMD python - <<'EOF'
-import urllib.request, sys
-try:
-    urllib.request.urlopen("http://localhost:5000/", timeout=8)
-    sys.exit(0)
-except Exception:
-    sys.exit(1)
-EOF
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/', timeout=8)"
 
 # ── Entry point ───────────────────────────────────────────────────────────────
-# wrapper.py supervises run.py and handles:
+# wrapper.py supervises run.py:
 #   • auto-restart on crash
 #   • graceful restart when the streamer list in config.json changes
-# run.py handles hot-reload of bet/notification settings (no restart needed).
+#   • catches both SIGINT and SIGTERM for clean Docker shutdown
 ENTRYPOINT ["python", "wrapper.py"]

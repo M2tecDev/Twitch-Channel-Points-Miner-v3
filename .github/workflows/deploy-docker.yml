@@ -6,6 +6,11 @@ on:
       - '*'
   workflow_dispatch:
 
+env:
+  # Opt into Node.js 24 now – avoids deprecation warnings for all actions.
+  # Remove once action authors ship native Node.js 24 versions.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy-docker:
     name: Build & Push (GHCR)
